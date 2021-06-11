@@ -1,0 +1,10 @@
+{
+    "files.associations": {
+        "stb_perlin.h": "c",
+        "*.m": "c",
+        "gs.h": "c",
+        "gs_idraw.h": "c",
+        "graphics.h": "c",
+        "main.h": "c"
+    }
+}
