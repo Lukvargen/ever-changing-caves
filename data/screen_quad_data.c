@@ -31,11 +31,18 @@ GS_VERSION_STR
 "layout(location = 0) in vec2 a_pos;\n"
 "layout(location = 1) in vec2 a_uv;\n"
 "precision mediump float;\n"
+"uniform int u_shake;\n"
+"uniform float u_time;\n"
 "out vec2 uv;\n"
 "void main()\n"
 "{\n"
 "   gl_Position = vec4(a_pos, 0.0, 1.0);\n"
 "   uv = a_uv;\n"
+"   if (u_shake != 0) {\n"
+"       float strength = 0.01;\n"
+"       gl_Position.x += cos(u_time * 10) * strength;\n"
+"       gl_Position.y += cos(u_time * 15) * strength;\n"
+"   }\n"
 "}";
 
 const char* screen_f_src =
@@ -45,7 +52,19 @@ GS_VERSION_STR
 "uniform vec2 u_res;\n"
 "in vec2 uv;\n"
 "out vec4 frag_color;\n"
-
+/*
+"const float offsets[9][2] = {\n"
+"   {-1, 1},\n"
+"   {-1, 1},\n"
+"   {-1, 1},\n"
+"   {-1, 1},\n"
+"   {-1, 1},\n"
+"   {-1, 1},\n"
+"   {-1, 1},\n"
+"   {-1, 1},\n"
+"   {-1, 1},\n"
+"};\n"
+*/
 "float vignette(vec2 _uv){\n"
 "   _uv *= 1.0 - _uv.xy;\n"
 "   float vignette = _uv.x * _uv.y * 15.0;\n"

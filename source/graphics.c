@@ -4,19 +4,27 @@
 #include "../data/particle_data.c"
 
 
+gs_asset_texture_t particle_texture; // not the best way...
+
 // Forward Declares
 void draw_tiles(game_data_t* gd, gs_command_buffer_t* gcb);
 void draw_screen(game_data_t* gd, gs_command_buffer_t* gcb);
+void draw_particles(game_data_t* gd, gs_command_buffer_t* gcb);
+void init_particles(game_data_t* gd);
+
 
 void graphics_init(game_data_t* gd)
 {
     gd->gcb = gs_command_buffer_new();
 	gd->gsi = gs_immediate_draw_new();
 
+	//gs_graphics_texture_desc_t desc = {0}
+	gs_asset_texture_load_from_file("./assets/Circle16.png", &particle_texture, NULL, true, false);
 
     init_tiles(gd);
     init_screen_quad(gd);
     init_framebuffer(gd);
+	init_particles(gd);
 }
 
 void draw_game(game_data_t* gd)
@@ -24,8 +32,10 @@ void draw_game(game_data_t* gd)
 	gs_command_buffer_t* gcb = &gd->gcb;
 	gs_immediate_draw_t* gsi = &gd->gsi;
 
+	
+
 	gs_graphics_clear_desc_t clear = (gs_graphics_clear_desc_t) {
-		.actions = &(gs_graphics_clear_action_t){.color = {0.1f, 0.8f, 0.1f, 1.f}}
+		.actions = &(gs_graphics_clear_action_t){.color = {0.05f, 0.05f, 0.05f, 1.f}}
 	};
 
 	gs_graphics_clear_desc_t fb_clear = (gs_graphics_clear_desc_t) {
@@ -118,13 +128,14 @@ void draw_game(game_data_t* gd)
 	// immediate draw submit and render pass
 	
 
-	gsi_text(gsi, RESOLUTION_X/2, 50, "Some text!", NULL, false, 255,255,255,255);
+	//gsi_text(gsi, RESOLUTION_X/2, 50, "Some text!", NULL, false, 255,255,255,255);
 	// render to frame buffer
 	gs_graphics_begin_render_pass(gcb, gd->rp);
 		gs_graphics_set_viewport(gcb, 0, 0, RESOLUTION_X, RESOLUTION_Y); // fit the texture
 		gs_graphics_clear(gcb, &fb_clear);
 		draw_tiles(gd, gcb);
-		gsi_draw(gsi, gcb); 
+		draw_particles(gd, gcb);
+		gsi_draw(gsi, gcb);
 	gs_graphics_end_render_pass(gcb);
 
 
@@ -220,6 +231,26 @@ void init_tiles(game_data_t* gd)
 
 void init_screen_quad(game_data_t* gd)
 {
+/*
+"uniform bool u_shake;\n"
+"uniform float u_time;\n"
+*/
+
+	gd->u_screen_shake = gs_graphics_uniform_create(
+		&(gs_graphics_uniform_desc_t) {
+			.stage = GS_GRAPHICS_SHADER_STAGE_VERTEX,
+			.name = "u_shake",
+			.layout = &(gs_graphics_uniform_layout_desc_t){.type = GS_GRAPHICS_UNIFORM_INT} // finns inte UNIFORM_BOOL..
+		}
+	);
+	gd->u_screen_time = gs_graphics_uniform_create(
+		&(gs_graphics_uniform_desc_t) {
+			.stage = GS_GRAPHICS_SHADER_STAGE_VERTEX,
+			.name = "u_time",
+			.layout = &(gs_graphics_uniform_layout_desc_t){.type = GS_GRAPHICS_UNIFORM_FLOAT}
+		}
+	);
+
 	gd->u_screen_texture = gs_graphics_uniform_create(
 		&(gs_graphics_uniform_desc_t) {
 			.stage = GS_GRAPHICS_SHADER_STAGE_FRAGMENT,
@@ -285,18 +316,18 @@ void init_particles(game_data_t* gd)
 			.layout = &(gs_graphics_uniform_layout_desc_t){.type = GS_GRAPHICS_UNIFORM_SAMPLER2D}
 		}
 	);
-	gd->u_particle_res = gs_graphics_uniform_create(
+	gd->u_particle_mvp = gs_graphics_uniform_create(
 		&(gs_graphics_uniform_desc_t) {
-			.stage = GS_GRAPHICS_SHADER_STAGE_FRAGMENT,
-			.name = "u_res",
-			.layout = &(gs_graphics_uniform_layout_desc_t){.type = GS_GRAPHICS_UNIFORM_VEC2}
+			.stage = GS_GRAPHICS_SHADER_STAGE_VERTEX,
+			.name = "u_mvp",
+			.layout = &(gs_graphics_uniform_layout_desc_t){.type = GS_GRAPHICS_UNIFORM_MAT4}
 		}
 	);
 	gd->u_particle_color = gs_graphics_uniform_create(
 		&(gs_graphics_uniform_desc_t) {
 			.stage = GS_GRAPHICS_SHADER_STAGE_FRAGMENT,
 			.name = "u_color",
-			.layout = &(gs_graphics_uniform_layout_desc_t){.type = GS_GRAPHICS_UNIFORM_VEC3}
+			.layout = &(gs_graphics_uniform_layout_desc_t){.type = GS_GRAPHICS_UNIFORM_VEC4}
 		}
 	);
 
@@ -330,15 +361,20 @@ void init_particles(game_data_t* gd)
                 .shader = gd->particle_shader,
                 .index_buffer_element_size = sizeof(uint32_t) 
             },
+			.blend = {
+				.func = GS_GRAPHICS_BLEND_EQUATION_ADD,
+				.src = GS_GRAPHICS_BLEND_MODE_SRC_ALPHA,
+				.dst = GS_GRAPHICS_BLEND_MODE_ONE_MINUS_SRC_ALPHA
+			},
             .layout = {
                 .attrs = (gs_graphics_vertex_attribute_desc_t[]){
-                    {.format = GS_GRAPHICS_VERTEX_ATTRIBUTE_FLOAT2, .name = "a_pos"}
+                    {.format = GS_GRAPHICS_VERTEX_ATTRIBUTE_FLOAT2, .name = "a_pos"},
+					{.format = GS_GRAPHICS_VERTEX_ATTRIBUTE_FLOAT2, .name = "a_uv"}
                 },
-                .size = 1 * sizeof(gs_graphics_vertex_attribute_desc_t)
+                .size = 2 * sizeof(gs_graphics_vertex_attribute_desc_t)
             }
         }
     );
-
 	
 }
 
@@ -354,7 +390,7 @@ void init_framebuffer(game_data_t* gd)
 			.format = GS_GRAPHICS_TEXTURE_FORMAT_RGBA8,
 			.wrap_s = GS_GRAPHICS_TEXTURE_WRAP_CLAMP_TO_EDGE,
 			.wrap_t = GS_GRAPHICS_TEXTURE_WRAP_CLAMP_TO_EDGE,
-			.min_filter = GS_GRAPHICS_TEXTURE_FILTER_NEAREST, // GS_GRAPHICS_TEXTURE_FILTER_NEAREST
+			.min_filter = GS_GRAPHICS_TEXTURE_FILTER_NEAREST,
 			.mag_filter = GS_GRAPHICS_TEXTURE_FILTER_NEAREST,
 			.render_target = true
 		}
@@ -395,9 +431,6 @@ void draw_tiles(game_data_t* gd, gs_command_buffer_t* gcb)
 		.uniforms = {.desc = uniforms, .size = sizeof(uniforms)}
 	};
 	
-
-	
-		
 	gs_graphics_bind_pipeline(gcb, gd->tile_pip);
 	
 	gs_vec3 wall_color = {33/255.0, 11/255.0, 44/255.0};
@@ -427,13 +460,70 @@ void draw_tiles(game_data_t* gd, gs_command_buffer_t* gcb)
 	}
 }
 
+void draw_particles(game_data_t* gd, gs_command_buffer_t* gcb)
+{
+
+	// set texture
+
+	gs_vec4 color;
+	gs_mat4 mvp;
+	// just set gs_mat4 mvp model view projection uniform 
+	gs_graphics_bind_uniform_desc_t uniforms[] = {
+		(gs_graphics_bind_uniform_desc_t){.uniform = gd->u_particle_color, .data = &color},
+		(gs_graphics_bind_uniform_desc_t){.uniform = gd->u_particle_mvp, .data = &mvp},
+		(gs_graphics_bind_uniform_desc_t){.uniform = gd->u_particle_texture, .data = &particle_texture},
+	};
+
+	gs_graphics_bind_desc_t binds = {
+		.vertex_buffers = {&(gs_graphics_bind_vertex_buffer_desc_t){.buffer = gd->particle_vbo}},
+		.index_buffers = {.desc = &(gs_graphics_bind_index_buffer_desc_t){.buffer = gd->particle_ibo}},
+		.uniforms = {.desc = uniforms, .size = sizeof(uniforms)}
+	};
+	gs_graphics_bind_pipeline(gcb, gd->particle_pip);
+
+	int emitters_amount = gs_dyn_array_size(gd->particle_emitters);
+	for (int i = 0; i < emitters_amount; i++) {
+		particle_emitter_t* emitter = gd->particle_emitters[i];
+		for (int j = 0; j < emitter->particle_amount; j++) {
+			particle_t p = emitter->particles[j];
+			if (p.dead)
+				continue;
+			// draw
+			float life_percent = p.life_time / emitter->particle_life_time;
+			gs_mat4 scale;
+			if (emitter->particle_shrink_out)
+				scale = gs_mat4_scale(p.size.x * (1.0-life_percent), p.size.y * (1.0-life_percent), 0.0f);
+			else
+				scale = gs_mat4_scale(p.size.x, p.size.y, 0.0f);
+
+			gs_mat4 translation = gs_mat4_translate(p.position.x, p.position.y, 0.0f);
+			gs_mat4 model = gs_mat4_mul(translation, scale);
+			mvp = gs_mat4_mul(gd->projection, model);
+			color = p.color;
+
+			//gs_graphics_apply_bindings(gcb, ); // uppdaterar detta texture också?? inte så bra i så fall 
+			gs_graphics_apply_bindings(gcb, &binds); // kolla om man kan ha 2 apply bindings.
+			gs_graphics_draw(gcb, &(gs_graphics_draw_desc_t){.start = 0, .count = 6});
+
+
+		}
+		
+	}
+}
 
 void draw_screen(game_data_t* gd, gs_command_buffer_t* gcb)
 {
 
 	gs_vec2 res = {RESOLUTION_X, RESOLUTION_Y};
 
+	float time = gs_platform_elapsed_time() * 0.001;
+	int shake = 0;
+	if (gd->shake_time > 0)
+		shake = 1;
+
 	gs_graphics_bind_uniform_desc_t uniforms[] = {
+		(gs_graphics_bind_uniform_desc_t){.uniform = gd->u_screen_shake, .data = &shake},
+		(gs_graphics_bind_uniform_desc_t){.uniform = gd->u_screen_time, .data = &time},
 		(gs_graphics_bind_uniform_desc_t){.uniform = gd->u_screen_texture, .data = &gd->rt},
 		(gs_graphics_bind_uniform_desc_t){.uniform = gd->u_screen_res, .data = &res},
 	};

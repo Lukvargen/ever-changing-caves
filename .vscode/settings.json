@@ -5,6 +5,11 @@
         "gs.h": "c",
         "gs_idraw.h": "c",
         "graphics.h": "c",
-        "main.h": "c"
+        "main.h": "c",
+        "xstring": "c",
+        "xutility": "c",
+        "initializer_list": "c",
+        "type_traits": "c",
+        "cmath": "c"
     }
 }

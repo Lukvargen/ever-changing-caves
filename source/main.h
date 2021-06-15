@@ -68,11 +68,60 @@ typedef struct powerup_t
 	float lifespan;
 } powerup_t;
 
+typedef struct particle_t
+{
+	gs_vec2 position;
+	gs_vec2 velocity;
+	gs_vec2 size;
+	gs_vec4 color;
+	float life_time;
+	bool dead;
+} particle_t;
+
+typedef struct particle_emitter_t
+{
+	gs_vec2 position;
+	bool emitting;
+	bool explode;
+	bool one_shot;
+	bool should_delete;
+	float spawn_timer;
+	float spawn_delay;
+	int particle_amount;
+	int particles_alive;
+	// particle properties
+	float particle_life_time;
+	gs_vec2 particle_velocity;
+	float rand_rotation_range;
+	float rand_velocity_range;
+	gs_vec2 particle_size;
+	gs_vec4 particle_color;
+	bool particle_shrink_out;
+	
+	gs_dyn_array(particle_t) particles;
+	int last_dead_index;
+} particle_emitter_t;
+
+typedef struct particle_emitter_desc_t
+{
+	gs_vec2 position;
+	int particle_amount;
+	float particle_lifetime;
+	gs_vec4 particle_color;
+	gs_vec2 particle_size;
+	gs_vec2 particle_velocity;
+	float rand_rotation_range;
+	float rand_velocity_range;
+	bool particle_shink_out;
+	bool explode;
+	bool one_shot;
+} particle_emitter_desc_t;
 
 typedef struct worm_t
 {
 	entity_t entity;
 	struct worm_t* segment;
+	particle_emitter_t* particle_emitter;
 } worm_t;
 
 typedef struct projectile_t
@@ -84,14 +133,6 @@ typedef struct projectile_t
 } projectile_t;
 
 
-typedef struct particle_t
-{
-	gs_vec2 position;
-	gs_vec2 velocity;
-	gs_vec2 size;
-	gs_vec4 color;
-	float life_time;
-} particle_t;
 
 typedef struct game_data_t 
 {
@@ -99,6 +140,7 @@ typedef struct game_data_t
 	gs_immediate_draw_t gsi;
 	player_t player;
 	gs_dyn_array(projectile_t) projecitles;
+	// tile
 	tile_t tiles[TILES_SIZE_X][TILES_SIZE_Y];
 	gs_handle(gs_graphics_vertex_buffer_t) tile_vbo;
 	gs_handle(gs_graphics_index_buffer_t)  tile_ibo;
@@ -118,6 +160,11 @@ typedef struct game_data_t
 	gs_handle(gs_graphics_shader_t) screen_shader;
 	gs_handle(gs_graphics_uniform_t) u_screen_texture;
 	gs_handle(gs_graphics_uniform_t) u_screen_res;
+	gs_handle(gs_graphics_uniform_t) u_screen_shake;
+	gs_handle(gs_graphics_uniform_t) u_screen_time;
+
+
+
 	// particle
 	gs_handle(gs_graphics_vertex_buffer_t) particle_vbo;
 	gs_handle(gs_graphics_index_buffer_t) particle_ibo;
@@ -125,7 +172,7 @@ typedef struct game_data_t
 	gs_handle(gs_graphics_shader_t) particle_shader;
 	gs_handle(gs_graphics_uniform_t) u_particle_texture;
 	gs_handle(gs_graphics_uniform_t) u_particle_color;
-	gs_handle(gs_graphics_uniform_t) u_particle_res;
+	gs_handle(gs_graphics_uniform_t) u_particle_mvp;
 
 	gs_dyn_array(worm_t*) worms;
 	float spawn_worm_timer;
@@ -134,7 +181,10 @@ typedef struct game_data_t
 	float spawn_powerup_timer;
 	float spawn_powerup_time;
 	gs_mat4 projection;
-	gs_dyn_array(particle_t) worm_hit_particles;
+	float shake_time;
+
+	
+	gs_dyn_array(particle_emitter_t*) particle_emitters;
 
 } game_data_t;
 
