@@ -16,6 +16,9 @@
 #define WORM_MAX_SPEED		150.f
 #define WORM_REPEL_AMOUNT	100.f
 
+#define TURRET_BURST_COUNT	3
+#define TURRET_BURST_SHOT_DELAY	0.1f
+
 #define PROJECITLE_MAX_LIFE_TIME 3.f
 #define EXPLODE_DMG 5.f
 
@@ -43,6 +46,7 @@ typedef struct tile_t
 	float destruction_value;
 } tile_t;
 
+/*
 typedef struct entity_t
 {
 	int hp;
@@ -52,13 +56,24 @@ typedef struct entity_t
 	gs_vec2 position;
 	gs_vec2 velocity;
 } entity_t;
+*/
 
+typedef enum entity_type_t
+{
+	ENTITY_TYPE_PLAYER,
+	ENTITY_TYPE_WORM
+} entity_type_t;
+
+
+
+
+/*
 typedef struct player_t
 {
 	entity_t entity;
 	float shoot_time;
 } player_t;
-
+*/
 
 typedef struct powerup_t
 {
@@ -116,14 +131,14 @@ typedef struct particle_emitter_desc_t
 	bool explode;
 	bool one_shot;
 } particle_emitter_desc_t;
-
+/*
 typedef struct worm_t
 {
 	entity_t entity;
 	struct worm_t* segment;
 	particle_emitter_t* particle_emitter;
 } worm_t;
-
+*/
 typedef struct projectile_t
 {
 	gs_vec2 position;
@@ -133,12 +148,52 @@ typedef struct projectile_t
 } projectile_t;
 
 
+typedef struct entity_t
+{
+	entity_type_t type;
+	int hp;
+	float radius; // ha support för rect hitbox?
+	/*
+	union
+	{
+		float hit_radius;
+		gs_vec2 hit_rect;
+	}
+	*/
+	bool dead;
+	float dead_timer;
+	gs_vec2 position;
+	gs_vec2 velocity;
+
+	union
+	{
+		struct player_t
+		{
+			float player_shoot_time;
+		};
+		struct worm_t
+		{
+			struct entity_t* segment; // skulle kunna ha worm segment struct. Beror på om jag vill att segmenten faktiskt ska göra något
+			particle_emitter_t* particle_emitter;
+		};
+		struct turret_t
+		{
+			float shoot_time;
+			float shoot_delay;
+			int shot_count;
+			gs_vec2 dir;
+			float angle;
+			bool shooting;
+		};
+	};
+} entity_t;
+
 
 typedef struct game_data_t 
 {
 	gs_command_buffer_t gcb;
 	gs_immediate_draw_t gsi;
-	player_t player;
+	entity_t player;
 	gs_dyn_array(projectile_t) projecitles;
 	// tile
 	tile_t tiles[TILES_SIZE_X][TILES_SIZE_Y];
@@ -163,8 +218,6 @@ typedef struct game_data_t
 	gs_handle(gs_graphics_uniform_t) u_screen_shake;
 	gs_handle(gs_graphics_uniform_t) u_screen_time;
 
-
-
 	// particle
 	gs_handle(gs_graphics_vertex_buffer_t) particle_vbo;
 	gs_handle(gs_graphics_index_buffer_t) particle_ibo;
@@ -174,12 +227,27 @@ typedef struct game_data_t
 	gs_handle(gs_graphics_uniform_t) u_particle_color;
 	gs_handle(gs_graphics_uniform_t) u_particle_mvp;
 
-	gs_dyn_array(worm_t*) worms;
-	float spawn_worm_timer;
-	float spawn_worm_time;
+	// entity
+	gs_handle(gs_graphics_vertex_buffer_t) entity_vbo;
+	gs_handle(gs_graphics_index_buffer_t) entity_ibo;
+	gs_handle(gs_graphics_pipeline_t) entity_pip;
+	gs_handle(gs_graphics_shader_t) entity_shader;
+	gs_handle(gs_graphics_uniform_t) u_entity_texture;
+	gs_handle(gs_graphics_uniform_t) u_entity_color;
+	gs_handle(gs_graphics_uniform_t) u_entity_mvp;
+
+	gs_dyn_array(entity_t*) worms;
+	float worm_spawn_timer;
+	float worm_spawn_time;
+
 	gs_dyn_array(powerup_t*) powerups;
-	float spawn_powerup_timer;
-	float spawn_powerup_time;
+	float powerup_spawn_timer;
+	float powerup_spawn_time;
+
+	gs_dyn_array(entity_t*) turrets;
+	float turret_spawn_timer;
+	float turret_spawn_time;
+
 	gs_mat4 projection;
 	float shake_time;
 

@@ -11,6 +11,7 @@
         "initializer_list": "c",
         "type_traits": "c",
         "cmath": "c",
-        "xiosbase": "c"
+        "xiosbase": "c",
+        "iterator": "c"
     }
 }

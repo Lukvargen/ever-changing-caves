@@ -2,15 +2,19 @@
 #include "../data/tile_data.c"
 #include "../data/screen_quad_data.c"
 #include "../data/particle_data.c"
+#include "../data/entity_data.c"
 
 
-gs_asset_texture_t particle_texture; // not the best way...
+gs_asset_texture_t circle_16px; // not the best way...
+gs_asset_texture_t turret_png;
 
 // Forward Declares
 void draw_tiles(game_data_t* gd, gs_command_buffer_t* gcb);
 void draw_screen(game_data_t* gd, gs_command_buffer_t* gcb);
 void draw_particles(game_data_t* gd, gs_command_buffer_t* gcb);
+void draw_entities(game_data_t* gd, gs_command_buffer_t* gcb);
 void init_particles(game_data_t* gd);
+void init_entities(game_data_t* gd);
 
 
 void graphics_init(game_data_t* gd)
@@ -19,12 +23,15 @@ void graphics_init(game_data_t* gd)
 	gd->gsi = gs_immediate_draw_new();
 
 	//gs_graphics_texture_desc_t desc = {0}
-	gs_asset_texture_load_from_file("./assets/Circle16.png", &particle_texture, NULL, true, false);
+	gs_asset_texture_load_from_file("./assets/Circle16.png", &circle_16px, NULL, true, false);
+	gs_asset_texture_load_from_file("./assets/Turret.png", &turret_png, NULL, true, false);
 
     init_tiles(gd);
     init_screen_quad(gd);
     init_framebuffer(gd);
 	init_particles(gd);
+	init_entities(gd);
+
 }
 
 void draw_game(game_data_t* gd)
@@ -42,7 +49,6 @@ void draw_game(game_data_t* gd)
 		.actions = &(gs_graphics_clear_action_t){.color = {0.8f, 0.1f, 0.1f, 1.f}}
 	};
 
-	gsi_camera2D(gsi);
 	gs_vec2 ws = window_size();
 	gs_vec2 fbs = gs_platform_framebuffer_sizev(gs_platform_main_window());
 
@@ -52,56 +58,7 @@ void draw_game(game_data_t* gd)
 	gsi_ortho(gsi, 0, RESOLUTION_X, RESOLUTION_Y, 0, 0, 100);
 
 
-	// Player
-	{
-		gs_vec2 pos = gd->player.entity.position;
-		gsi_circle(gsi, pos.x, pos.y, gd->player.entity.radius, 16,
-			50, 150, 50, 255, GS_GRAPHICS_PRIMITIVE_TRIANGLES);
-	}
-
-	// Powerups
-	for (int i = 0; i < gs_dyn_array_size(gd->powerups); i++) {
-		powerup_t *p = gd->powerups[i];
-		gsi_circle(gsi, p->position.x, p->position.y, p->radius, 4,
-		50, 50, 200, 255, GS_GRAPHICS_PRIMITIVE_TRIANGLES);
-	}
-
-
-	// Worms
-	for (int i = 0; i < gs_dyn_array_size(gd->worms); i++) {
-		worm_t* head = gd->worms[i];
-		gs_vec2 pos = head->entity.position;
-		int alpha = 255;
-		float dead_timer = head->entity.dead_timer;
-		if (head->entity.dead) {
-			alpha = 255 * (1-(dead_timer/0.25));
-			alpha = max(alpha, 0);
-		}
-		gsi_circle(gsi, pos.x, pos.y, head->entity.radius, 8,
-			200, 20, 20, alpha, GS_GRAPHICS_PRIMITIVE_TRIANGLES);
-		worm_t* parent = head;
-		int i = 0;
-		while (parent->segment) {
-			worm_t* child = parent->segment;
-			pos = child->entity.position;
-			alpha = 255 * (1-(max(dead_timer - 0.05*i, 0)/0.25)); 
-			alpha = max(alpha, 0);
-			gsi_circle(gsi, pos.x, pos.y, child->entity.radius-i, 8,
-				150 - 10 * i, 20, 20, alpha, GS_GRAPHICS_PRIMITIVE_TRIANGLES);
-
-			i++;
-			parent = child;
-		}
-	}
-
 	
-	// Projectiles
-	for (int i = 0; i < gs_dyn_array_size(gd->projecitles); i++) {
-		projectile_t* p = &gd->projecitles[i];
-		gs_vec2 pos = p->position;
-		gsi_circle(gsi, pos.x, pos.y, p->radius * (1-(p->life_time / PROJECITLE_MAX_LIFE_TIME*1.f)), 8,
-			200 + 50 * (p->life_time / PROJECITLE_MAX_LIFE_TIME*1.f), 50, 50, 255, GS_GRAPHICS_PRIMITIVE_TRIANGLES);
-	}
 	/*
 	// Hpbar
 	{
@@ -136,6 +93,7 @@ void draw_game(game_data_t* gd)
 		draw_tiles(gd, gcb);
 		draw_particles(gd, gcb);
 		gsi_draw(gsi, gcb);
+		draw_entities(gd, gcb);
 	gs_graphics_end_render_pass(gcb);
 
 
@@ -333,14 +291,14 @@ void init_particles(game_data_t* gd)
 
 	gd->particle_vbo = gs_graphics_vertex_buffer_create(
 		&(gs_graphics_vertex_buffer_desc_t) {
-			.data = particle_v_data,
-			.size = sizeof(particle_v_data)
+			.data = quad_v_data,
+			.size = sizeof(quad_v_data)
 		}
 	);
 	gd->particle_ibo = gs_graphics_index_buffer_create(
 		&(gs_graphics_index_buffer_desc_t) {
-			.data = particle_i_data,
-			.size = sizeof(particle_i_data)
+			.data = quad_i_data,
+			.size = sizeof(quad_i_data)
 		}
 	);
 
@@ -376,6 +334,75 @@ void init_particles(game_data_t* gd)
         }
     );
 	
+}
+void init_entities(game_data_t* gd)
+{
+	gd->u_entity_texture = gs_graphics_uniform_create(
+		&(gs_graphics_uniform_desc_t) {
+			.stage = GS_GRAPHICS_SHADER_STAGE_FRAGMENT,
+			.name = "u_tex",
+			.layout = &(gs_graphics_uniform_layout_desc_t){.type = GS_GRAPHICS_UNIFORM_SAMPLER2D}
+		}
+	);
+	gd->u_entity_mvp = gs_graphics_uniform_create(
+		&(gs_graphics_uniform_desc_t) {
+			.stage = GS_GRAPHICS_SHADER_STAGE_VERTEX,
+			.name = "u_mvp",
+			.layout = &(gs_graphics_uniform_layout_desc_t){.type = GS_GRAPHICS_UNIFORM_MAT4}
+		}
+	);
+	gd->u_entity_color = gs_graphics_uniform_create(
+		&(gs_graphics_uniform_desc_t) {
+			.stage = GS_GRAPHICS_SHADER_STAGE_FRAGMENT,
+			.name = "u_color",
+			.layout = &(gs_graphics_uniform_layout_desc_t){.type = GS_GRAPHICS_UNIFORM_VEC4}
+		}
+	);
+
+	gd->entity_vbo = gs_graphics_vertex_buffer_create(
+		&(gs_graphics_vertex_buffer_desc_t) {
+			.data = quad_v_data,
+			.size = sizeof(quad_v_data)
+		}
+	);
+	gd->entity_ibo = gs_graphics_index_buffer_create(
+		&(gs_graphics_index_buffer_desc_t) {
+			.data = quad_i_data,
+			.size = sizeof(quad_i_data)
+		}
+	);
+
+	gd->entity_shader = gs_graphics_shader_create(
+		&(gs_graphics_shader_desc_t) {
+			.sources = (gs_graphics_shader_source_desc_t[]) {
+				{.type = GS_GRAPHICS_SHADER_STAGE_VERTEX, .source = entity_v_src},
+				{.type = GS_GRAPHICS_SHADER_STAGE_FRAGMENT, .source = entity_f_src},
+			},
+			.size = 2 * sizeof(gs_graphics_shader_source_desc_t),
+			.name = "entity_shader"
+		}
+	);
+
+	gd->entity_pip = gs_graphics_pipeline_create (
+        &(gs_graphics_pipeline_desc_t) {
+            .raster = {
+                .shader = gd->entity_shader,
+                .index_buffer_element_size = sizeof(uint32_t) 
+            },
+			.blend = {
+				.func = GS_GRAPHICS_BLEND_EQUATION_ADD,
+				.src = GS_GRAPHICS_BLEND_MODE_SRC_ALPHA,
+				.dst = GS_GRAPHICS_BLEND_MODE_ONE_MINUS_SRC_ALPHA
+			},
+            .layout = {
+                .attrs = (gs_graphics_vertex_attribute_desc_t[]){
+                    {.format = GS_GRAPHICS_VERTEX_ATTRIBUTE_FLOAT2, .name = "a_pos"},
+					{.format = GS_GRAPHICS_VERTEX_ATTRIBUTE_FLOAT2, .name = "a_uv"}
+                },
+                .size = 2 * sizeof(gs_graphics_vertex_attribute_desc_t)
+            }
+        }
+    );
 }
 
 void init_framebuffer(game_data_t* gd)
@@ -471,7 +498,7 @@ void draw_particles(game_data_t* gd, gs_command_buffer_t* gcb)
 	gs_graphics_bind_uniform_desc_t uniforms[] = {
 		(gs_graphics_bind_uniform_desc_t){.uniform = gd->u_particle_color, .data = &color},
 		(gs_graphics_bind_uniform_desc_t){.uniform = gd->u_particle_mvp, .data = &mvp},
-		(gs_graphics_bind_uniform_desc_t){.uniform = gd->u_particle_texture, .data = &particle_texture},
+		(gs_graphics_bind_uniform_desc_t){.uniform = gd->u_particle_texture, .data = &circle_16px},
 	};
 
 	gs_graphics_bind_desc_t binds = {
@@ -510,6 +537,138 @@ void draw_particles(game_data_t* gd, gs_command_buffer_t* gcb)
 		
 	}
 }
+
+void draw_entities(game_data_t* gd, gs_command_buffer_t* gcb)
+{
+
+	gs_vec4 color;
+	gs_mat4 mvp;
+	gs_asset_texture_t tex = circle_16px;
+	// just set gs_mat4 mvp model view projection uniform 
+	gs_graphics_bind_uniform_desc_t uniforms[] = {
+		(gs_graphics_bind_uniform_desc_t){.uniform = gd->u_entity_color, .data = &color},
+		(gs_graphics_bind_uniform_desc_t){.uniform = gd->u_entity_mvp, .data = &mvp},
+		(gs_graphics_bind_uniform_desc_t){.uniform = gd->u_entity_texture, .data = &tex}, // texture borde vara atlas och bara ändras 1 gång
+	};
+
+	gs_graphics_bind_desc_t binds = {
+		.vertex_buffers = {&(gs_graphics_bind_vertex_buffer_desc_t){.buffer = gd->entity_vbo}},
+		.index_buffers = {.desc = &(gs_graphics_bind_index_buffer_desc_t){.buffer = gd->entity_ibo}},
+		.uniforms = {.desc = uniforms, .size = sizeof(uniforms)}
+	};
+	gs_graphics_bind_pipeline(gcb, gd->entity_pip);
+
+	// Player
+	{
+
+		color = gs_v4(50/255.0, 150/255.0, 50/255.0, 1.0);
+		gs_mat4 translation = gs_mat4_translate(gd->player.position.x, gd->player.position.y, 0.0f);
+		float size = gd->player.radius * 2;
+		gs_mat4 model = gs_mat4_mul(translation, gs_mat4_scale(size, size, 0));
+		mvp = gs_mat4_mul(gd->projection, model);
+
+		gs_graphics_apply_bindings(gcb, &binds); // kolla om man kan ha 2 apply bindings.
+		gs_graphics_draw(gcb, &(gs_graphics_draw_desc_t){.start = 0, .count = 6});
+
+	}
+
+	// Powerups
+	for (int i = 0; i < gs_dyn_array_size(gd->powerups); i++) {
+		powerup_t *p = gd->powerups[i];
+
+		color = gs_v4(50/255.0, 50/255.0, 200/255.0, 1.0);
+		gs_mat4 translation = gs_mat4_translate(p->position.x, p->position.y, 0.0f);
+		float size = p->radius * 2;
+		gs_mat4 model = gs_mat4_mul(translation, gs_mat4_scale(size, size, 0));
+		mvp = gs_mat4_mul(gd->projection, model);
+
+		gs_graphics_apply_bindings(gcb, &binds); // kolla om man kan ha 2 apply bindings.
+		gs_graphics_draw(gcb, &(gs_graphics_draw_desc_t){.start = 0, .count = 6});
+
+	}
+
+
+	// Worms
+	for (int i = 0; i < gs_dyn_array_size(gd->worms); i++) {
+		entity_t* head = gd->worms[i];
+		gs_vec2 pos = head->position;
+
+		color = gs_v4(200/255.0, 20/255.0, 20/255.0, 1.0);
+		gs_mat4 translation = gs_mat4_translate(pos.x, pos.y, 0.0f);
+		float size = head->radius * 2;
+		gs_mat4 model = gs_mat4_mul(translation, gs_mat4_scale(size, size, 0));
+		mvp = gs_mat4_mul(gd->projection, model);
+
+
+		float alpha = 1.0;
+		float dead_timer = head->dead_timer;
+		if (head->dead) {
+			alpha = 1 * (1-(dead_timer/0.25));
+			alpha = max(alpha, 0);
+		}
+		color.w = alpha;
+		gs_graphics_apply_bindings(gcb, &binds); // kolla om man kan ha 2 apply bindings.
+		gs_graphics_draw(gcb, &(gs_graphics_draw_desc_t){.start = 0, .count = 6});
+
+		entity_t* parent = head;
+		int i = 0;
+		while (parent->segment) {
+			entity_t* child = parent->segment;
+			pos = child->position;
+			alpha = 1 * (1-(max(dead_timer - 0.05*i, 0)/0.25)); 
+			alpha = max(alpha, 0);
+
+
+			color = gs_v4(0.6 - 0.04 * i, 20/255.0, 20/255.0, alpha);
+			gs_mat4 translation = gs_mat4_translate(pos.x, pos.y, 0.0f);
+			size = (child->radius*2) -i;
+			gs_mat4 model = gs_mat4_mul(translation, gs_mat4_scale(size, size, 0));
+			mvp = gs_mat4_mul(gd->projection, model);
+
+			gs_graphics_apply_bindings(gcb, &binds); // kolla om man kan ha 2 apply bindings.
+			gs_graphics_draw(gcb, &(gs_graphics_draw_desc_t){.start = 0, .count = 6});
+
+			i++;
+			parent = child;
+		}
+	}
+
+	
+	// Projectiles
+	for (int i = 0; i < gs_dyn_array_size(gd->projecitles); i++) {
+		projectile_t* p = &gd->projecitles[i];
+
+		color = gs_v4(50/255.0, 50/255.0, 50/255.0, 1.0);
+		gs_mat4 translation = gs_mat4_translate(p->position.x, p->position.y, 0.0f);
+		float size = 2 * p->radius * (1-(p->life_time / PROJECITLE_MAX_LIFE_TIME*1.f));
+		gs_mat4 model = gs_mat4_mul(translation, gs_mat4_scale(size, size, 0));
+		mvp = gs_mat4_mul(gd->projection, model);
+
+		gs_graphics_apply_bindings(gcb, &binds); // kolla om man kan ha 2 apply bindings.
+		gs_graphics_draw(gcb, &(gs_graphics_draw_desc_t){.start = 0, .count = 6});
+	}
+
+	// turrets
+	tex = turret_png;
+	int t_size = gs_dyn_array_size(gd->turrets);
+	for (int i = 0; i < t_size; i++) {
+		entity_t* t = gd->turrets[i];
+
+		color = gs_v4(1.0, 1.0, 1.0, 1.0);
+
+		gs_mat4 rot = gs_mat4_rotate(t->angle, 0, 0, 1);
+		gs_mat4 translation = gs_mat4_translate(t->position.x, t->position.y, 0.0f);
+		float size = 2 * t->radius;
+		gs_mat4 model = gs_mat4_mul_list(3, translation, gs_mat4_scale(size, size, 0), rot);
+
+		mvp = gs_mat4_mul(gd->projection, model);
+
+		gs_graphics_apply_bindings(gcb, &binds);
+		gs_graphics_draw(gcb, &(gs_graphics_draw_desc_t){.start = 0, .count = 6});
+	}
+
+}
+
 
 void draw_screen(game_data_t* gd, gs_command_buffer_t* gcb)
 {
