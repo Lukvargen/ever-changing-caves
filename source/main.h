@@ -183,8 +183,9 @@ typedef struct game_data_t
 	gs_mat4 projection;
 	float shake_time;
 
-	
 	gs_dyn_array(particle_emitter_t*) particle_emitters;
+
+	
 
 } game_data_t;
 

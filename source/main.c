@@ -4,6 +4,7 @@
 #define GS_IMMEDIATE_DRAW_IMPL
 #include <gs/util/gs_idraw.h>
 
+
 #define STB_PERLIN_IMPLEMENTATION
 #include <stb_perlin.h>
 
@@ -41,6 +42,10 @@ float randf();
 
 void init() 
 {
+
+
+	
+
 	game_data_t* gd = gs_engine_user_data(game_data_t);
 	
 	hit_sound_hndl = gs_audio_load_from_file("./assets/Hit_Hurt2.wav");
@@ -70,6 +75,8 @@ void init()
 	}
 
 	graphics_init(gd);
+
+
 }
 
 
@@ -102,6 +109,7 @@ void update()
 
 	
 	draw_game(gd);
+
 
 }
 
@@ -254,7 +262,7 @@ void update_projectiles(game_data_t* gd)
 		// behöver vända på loopen och ha if delete: i-- p_size--
 		if (should_delete) {
 			if (!played_sfx) {
-				// gs_audio_play_source(hit_sound_hndl, 0.5f); 
+				//gs_audio_play_source(hit_sound_hndl, 0.5f); 
 				played_sfx = true;
 			}
 			if (i < p_size-1) {

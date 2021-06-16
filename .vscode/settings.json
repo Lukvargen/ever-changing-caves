@@ -10,6 +10,7 @@
         "xutility": "c",
         "initializer_list": "c",
         "type_traits": "c",
-        "cmath": "c"
+        "cmath": "c",
+        "xiosbase": "c"
     }
 }
