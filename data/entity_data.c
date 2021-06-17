@@ -22,6 +22,7 @@ const char* entity_f_src =
 GS_VERSION_STR
 "precision mediump float;\n"
 "uniform vec4 u_color;\n"
+"uniform float u_flash;"
 "uniform sampler2D u_tex;\n"
 "in vec2 uv;\n"
 "out vec4 frag_color;\n"
@@ -34,5 +35,7 @@ GS_VERSION_STR
 "       color.a = 0.0;\n"
 "   }\n"
 */
+"   color.rgb = mix(color.rgb, vec3(1.0, 1.0, 1.0), u_flash);\n"
 "   frag_color = color;\n"
+//"   frag_color.rgb = vec3(u_flash);\n"
 "}";

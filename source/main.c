@@ -16,15 +16,17 @@ gs_handle(gs_audio_source_t) hit_sound_hndl = {0}; // move me!
 
 
 // Forward Declares
+void spawn_player(game_data_t* gd);
 void update_player(game_data_t* gd);
+void spawn_projectile(game_data_t* gd, projectile_t* projectile);
 void update_projectiles(game_data_t* gd);
 void update_tiles(game_data_t* gd);
 void update_powerups(game_data_t* gd);
 void update_worms(game_data_t* gd);
 void update_particle_emitters(game_data_t* gd, float delta);
-void update_turrets(game_data_t* gd, float delta);
 
 void spawn_turret(game_data_t* gd, gs_vec2 pos);
+void update_turrets(game_data_t* gd, float delta);
 
 void spawn_worm(game_data_t* gd, int segments);
 void delete_worm(entity_t* worm);
@@ -51,8 +53,7 @@ void init()
 	gs_vec2 ws = window_size();
 
 	// Initialize Game Data
-	gd->player.position = gs_vec2_scale(ws, 0.5f);
-	gd->player.radius = 4.f;
+	
 	gd->projecitles = NULL;
 	gd->worms = NULL;
 	gd->powerups = NULL;
@@ -63,9 +64,27 @@ void init()
 	gd->worm_spawn_timer = 5.f;
 	gd->worm_spawn_time = 0.f;
 
-	gd->turret_spawn_timer = 1000.f;
-	
+	gd->turret_spawn_timer = 10.f;
 
+	gd->enemies = NULL;
+	gs_dyn_array_push(gd->enemies, &gd->worms);
+	gs_dyn_array_push(gd->enemies, &gd->turrets);
+
+	/*
+	spawn_worm(gd, 5, gs_v2(100, 100));
+	spawn_worm(gd, 5, gs_v2(50, 100));
+
+	printf("dyn array soze %i \n", gs_dyn_array_size(*gd->enemies[0]));
+
+	entity_t** worms = *gd->enemies[0];
+	entity_t* worm = *gd->enemies[0]+1;
+	for (int i = 0; i < 2; i++) {
+		printf("worm pos x %f \n", worms[i]->position.x);
+	}
+	printf("worm alone pos x %f \n", worm->position.x);
+	//printf("dyn array soze %i \n", *(gd->enemies[0])[0]->hp);
+	*/
+		
 	for (int x = 0; x < TILES_SIZE_X; x++) {
 		for (int y = 0; y < TILES_SIZE_Y; y++) {
 			gd->tiles[x][y].destruction_value = 0;
@@ -77,13 +96,14 @@ void init()
 	graphics_init(gd);
 
 
+	spawn_player(gd);
 }
 
 
 /*=================
 // Update Functions
 =================*/
-
+float t = 0.0;
 void update()
 {
 	if (gs_platform_key_pressed(GS_KEYCODE_ESC)) {
@@ -99,7 +119,7 @@ void update()
 
 	gd->shake_time -= delta;
 
-
+	
 	update_player(gd);
 	update_powerups(gd);
 	update_worms(gd);
@@ -111,7 +131,12 @@ void update()
 	
 	draw_game(gd);
 
-
+	t += delta;
+	if (t > 0.5) {
+		t = 0.0;
+		printf("FPS: %f\n", 1.0/delta);
+	}
+	
 }
 
 void update_tiles(game_data_t* gd)
@@ -133,6 +158,27 @@ void update_tiles(game_data_t* gd)
 	}
 }
 
+void spawn_player(game_data_t* gd)
+{
+	entity_t* p = &gd->player;
+	p->position.x = RESOLUTION_X / 2;
+	p->position.y = RESOLUTION_Y / 2;
+	p->radius = 4.f;
+
+	p->player_particle_emitter = spawn_particle_emitter(gd, &(particle_emitter_desc_t){
+		.particle_amount = 8,
+		.particle_color = gs_v4(0.1, 0.3, 0.1, 0.25),
+		.particle_lifetime = 0.25,
+		.particle_shink_out = true,
+		.particle_size = gs_v2(10, 10),
+		.particle_velocity = gs_v2(20, 0),
+		.rand_velocity_range = 0.75,
+		.rand_rotation_range = 2 * 3.14,
+		.position = gd->player.position
+		
+	});
+	printf("Particle emitter %i\n", p->player_particle_emitter->emitting);
+}
 void update_player(game_data_t* gd)
 {
 	entity_t* p = &gd->player;
@@ -161,6 +207,10 @@ void update_player(game_data_t* gd)
 	pos->x += vel->x * delta;
 	pos->y += vel->y * delta;
 
+	p->player_particle_emitter->position = p->position;
+
+	//printf("paRticle emitter %i\n", p->player_particle_emitter->emitting);
+
 	// wrap world
 	float width = TILES_SIZE_X * TILE_SIZE;
 	float height = TILES_SIZE_Y * TILE_SIZE;
@@ -174,19 +224,41 @@ void update_player(game_data_t* gd)
 		pos->y = 0;
 	
 
-	p->shoot_time += delta;
+	p->turret_shoot_time += delta;
 	if (gs_platform_mouse_down(GS_MOUSE_LBUTTON) && p->player_shoot_time >= PLAYER_SHOOT_TIMER) {
-		p->shoot_time = 0.f;
+		p->turret_shoot_time = 0.f;
 		gs_vec2 dir = gs_vec2_sub(get_world_mouse_pos(), *pos);
 		dir = gs_vec2_norm(dir);
 		
 		gs_vec2 vel = gs_vec2_scale(dir, 300.f);
 
 		// (float)rand()/(float)(RAND_MAX))
-		projectile_t p = {.position = *pos, .velocity = vel, .radius = 5};
-		gs_dyn_array_push(gd->projecitles, p);
+		
+		
+		spawn_projectile(gd, &(projectile_t){
+			.position = *pos,
+			.velocity = vel,
+			.radius = 5,
+			.accell = 200,
+			.particle_emitter = spawn_particle_emitter(gd, &(particle_emitter_desc_t){
+				.particle_amount = 8,
+				.particle_color = gs_v4(0.1, 0.3, 0.3, 1.0),
+				.particle_lifetime = 0.25,
+				.particle_shink_out = true,
+				.particle_size = gs_v2(8, 8),
+				.position = *pos
+				
+			})
+		});
+		
 	}
 
+}
+
+void spawn_projectile(game_data_t* gd, projectile_t* projectile)
+{
+	printf("spawn projectile\n");
+	gs_dyn_array_push(gd->projecitles, *projectile);
 }
 
 void update_projectiles(game_data_t* gd)
@@ -203,18 +275,23 @@ void update_projectiles(game_data_t* gd)
 		bool should_delete = false;
 		
 		gs_vec2 dir = gs_vec2_norm(*vel);
-		vel->x += dir.x * 200 * delta;
-		vel->y += dir.y * 200 * delta;
+		vel->x += dir.x * p->accell * delta;
+		vel->y += dir.y * p->accell * delta;
 
 		pos->x += vel->x * delta;
 		pos->y += vel->y * delta;
+		if (p->particle_emitter) {
+			p->particle_emitter->position = *pos;
+		}
+
 
 		int tile_x = pos->x / TILE_SIZE;
 		int tile_y = pos->y / TILE_SIZE;
 		if (is_tile_solid(gd ,tile_x, tile_y)) {
 			should_delete = true;
-			gd->shake_time = 0.05;
 			explode_tiles(gd, tile_x, tile_y, 5);
+			if (!p->enemy_created)
+				gd->shake_time = 0.05;
 		}
 
 		p->life_time += delta;
@@ -222,46 +299,102 @@ void update_projectiles(game_data_t* gd)
 			should_delete = true;
 		}
 
-		// Collisions with worms. Add collision with worm segments??
-		int worms_size = gs_dyn_array_size(gd->worms);
-		for (int j = 0; j < worms_size; j++) {
-			entity_t* worm = gd->worms[j];
-			if (worm->dead)
-				continue;
-			if (is_colliding(*pos, worm->position, p->radius, worm->radius)) {
-				//gs_println("Collision with worm");
-				should_delete = true;
-				gd->shake_time = 0.05;
-				explode_tiles(gd, tile_x, tile_y, 5);
-				
-				worm->dead = true;
-				worm->dead_timer = 0.f;
-				gs_vec2 particle_vel = gs_vec2_norm(p->velocity);
-				particle_vel.x *= 75;
-				particle_vel.y *= 75;
-				//printf("particle vel x %f, y %f \n", particle_vel.x, particle_vel.y);
-				// spawn hit particle
-				spawn_particle_emitter(gd, &(particle_emitter_desc_t){
-					.particle_amount 	= 8,
-					.particle_color 	= gs_v4(0.4, 0.1, 0.1, 1.0),
-					.particle_lifetime 	= 0.75f,
-					.particle_shink_out = true,
-					.particle_size 		= gs_v2(12,12),
-					.particle_velocity 	= particle_vel,
-					.position 			= *pos,
-					.explode = true,
-					.rand_rotation_range = 1.0,
-					.rand_velocity_range = 0.5,
-					.one_shot = true
-				});
+		if (p->enemy_created) {
 
-				break;
+		} else { // spawned by player
+			// Collisions with worms. Add collision with worm segments??
+			//int worms_size = gs_dyn_array_size(gd->worms);
+
+			// combine all enemies??????
+
+			for (int enemy_list_i = 0; enemy_list_i < gs_dyn_array_size(gd->enemies); enemy_list_i++) {
+				entity_t** enemy_list = *gd->enemies[enemy_list_i]; // read the value of the pointer to the list
+				int list_size = gs_dyn_array_size(enemy_list);
+				
+				for (int j = 0; j < list_size; j++) {
+					
+					entity_t* enemy = enemy_list[j];
+					if (enemy->dead)
+						continue;
+					if (is_colliding(*pos, enemy->position, p->radius, enemy->radius)) {
+						//gs_println("Collision with worm");
+						should_delete = true;
+						gd->shake_time = 0.05;
+						explode_tiles(gd, tile_x, tile_y, 5);
+						gs_vec2 projectile_dir = gs_vec2_norm(p->velocity);
+						enemy->hp -= 1;
+						enemy->flash = 1.0;
+						enemy->velocity = gs_vec2_add(enemy->velocity, gs_vec2_scale(projectile_dir, 200));
+						//worm->dead_timer = 0.f;
+						gs_vec2 particle_vel = projectile_dir;
+						particle_vel.x *= 75;
+						particle_vel.y *= 75;
+						//printf("particle vel x %f, y %f \n", particle_vel.x, particle_vel.y);
+						// spawn hit particle
+						spawn_particle_emitter(gd, &(particle_emitter_desc_t){
+							.particle_amount 	= 8,
+							.particle_color 	= gs_v4(0.4, 0.1, 0.1, 1.0),
+							.particle_lifetime 	= 0.75f,
+							.particle_shink_out = true,
+							.particle_size 		= gs_v2(12,12),
+							.particle_velocity 	= particle_vel,
+							.position 			= *pos,
+							.explode = true,
+							.rand_rotation_range = 1.0,
+							.rand_velocity_range = 0.5,
+							.one_shot = true
+						});
+
+						break;
+					}
+				}
 			}
-		}
+/*
+			for (int j = 0; j < worms_size; j++) {
+				entity_t* worm = gd->worms[j];
+				if (worm->dead)
+					continue;
+				if (is_colliding(*pos, worm->position, p->radius, worm->radius)) {
+					//gs_println("Collision with worm");
+					should_delete = true;
+					gd->shake_time = 0.05;
+					explode_tiles(gd, tile_x, tile_y, 5);
+					gs_vec2 projectile_dir = gs_vec2_norm(p->velocity);
+					worm->hp -= 1;
+					worm->flash = 1.0;
+					worm->velocity = gs_vec2_add(worm->velocity, gs_vec2_scale(projectile_dir, 200));
+					//worm->dead_timer = 0.f;
+					gs_vec2 particle_vel = projectile_dir;
+					particle_vel.x *= 75;
+					particle_vel.y *= 75;
+					//printf("particle vel x %f, y %f \n", particle_vel.x, particle_vel.y);
+					// spawn hit particle
+					spawn_particle_emitter(gd, &(particle_emitter_desc_t){
+						.particle_amount 	= 8,
+						.particle_color 	= gs_v4(0.4, 0.1, 0.1, 1.0),
+						.particle_lifetime 	= 0.75f,
+						.particle_shink_out = true,
+						.particle_size 		= gs_v2(12,12),
+						.particle_velocity 	= particle_vel,
+						.position 			= *pos,
+						.explode = true,
+						.rand_rotation_range = 1.0,
+						.rand_velocity_range = 0.5,
+						.one_shot = true
+					});
+
+					break;
+				}
+			}*/
+		} // end spawned by player
 
 		// skulle kunna bara swappa plats med sista elementet och sen pop
 		// behöver vända på loopen och ha if delete: i-- p_size--
 		if (should_delete) {
+			if (p->particle_emitter) {
+				p->particle_emitter->should_delete = true;
+			}
+
 			if (!played_sfx) {
 				//gs_audio_play_source(hit_sound_hndl, 0.5f); 
 				played_sfx = true;
@@ -303,10 +436,17 @@ void update_worms(game_data_t* gd)
 	for (int i = 0; i < worms_size; i++) {
 		entity_t* head = gd->worms[i];
 
+		head->flash -= 5*delta;
+		if (head->flash < 0)
+			head->flash = 0.f;
+
+		if (head->hp <= 0)
+			head->dead = true;
+
 		// .5 secounds delay after dead for death animation
 		if (head->dead) {
 			head->dead_timer += delta;
-			head->particle_emitter->emitting = false;
+			head->worm_particle_emitter->emitting = false;
 			if (head->dead_timer > 0.5f) {
 				gd->worms[i] = gd->worms[worms_size-1];
 				gs_dyn_array_pop(gd->worms);
@@ -356,12 +496,12 @@ void update_worms(game_data_t* gd)
 		head->position.x += head->velocity.x * delta;
 		head->position.y += head->velocity.y * delta;
 
-		head->particle_emitter->position = head->position;
+		head->worm_particle_emitter->position = head->position;
 
 		// segment follows parent
 		entity_t* parent = head;
-		while (parent->segment) {
-			entity_t* child = parent->segment;
+		while (parent->worm_segment) {
+			entity_t* child = parent->worm_segment;
 			gs_vec2 dist = gs_vec2_sub(parent->position, child->position);
 			if (gs_vec2_len(dist) > 2) {
 				child->position.x += dist.x * 10 * delta;
@@ -543,7 +683,8 @@ void spawn_turret(game_data_t* gd, gs_vec2 pos)
 	*turret = (entity_t) {
 		.position = pos,
 		.radius = 9,
-		.hp = 3
+		.hp = 3,
+		.turret_shoot_delay = 1.f
 	};
 	printf("spawn turret");
 	gs_dyn_array_push(gd->turrets, turret);
@@ -552,40 +693,94 @@ void update_turrets(game_data_t* gd, float delta)
 {
 	gd->turret_spawn_time -= delta;
 	if (gd->turret_spawn_time <= 0) {
-		gd->turret_spawn_time = gd->turret_spawn_timer * randf() + 19023;
+		gd->turret_spawn_time = gd->turret_spawn_timer * randf();
 		gs_vec2 spawn_pos;
 		spawn_pos.x = (RESOLUTION_X-20) * randf() + 20;
 		spawn_pos.y = (RESOLUTION_Y-20) * randf() + 20;
 		spawn_turret(gd, spawn_pos);
 	}
 
+	
 
 	int turrets_size = gs_dyn_array_size(gd->turrets);
 	for (int i = 0; i < turrets_size; i++) {
 		entity_t* t = gd->turrets[i];
+		t->flash -= 5*delta;
+		if (t->flash < 0)
+			t->flash = 0.f;
+		t->turret_time_since_spawn += delta;
+		
+
 		if (t->dead) {
 			// måste fixa något death animation system
 			remove_entity(gd->turrets, &turrets_size, &i);
 			continue;
 		}
-		if (!t->shooting) {
-			t->shoot_time += delta;
-			if (t->shoot_time >= t->shoot_delay) {
-				t->shot_count = 0;
-				t->shooting = true;
+
+		gs_vec2 player_pos = gd->player.position;
+		t->turret_angle = atan2f(player_pos.y - t->position.y, player_pos.x - t->position.x);
+		gs_vec2 target_dir = gs_vec2_sub(player_pos, t->position);
+		target_dir = gs_vec2_norm(target_dir);
+
+		if (t->turret_time_since_spawn < TURRET_ANIMATION_SPAWN_TIME)
+			continue;
+		
+		if (!t->turret_shooting) {
+			t->turret_shoot_time += delta;
+			if (t->turret_shoot_time >= t->turret_shoot_delay) {
+				t->turret_shot_count = 0;
+				t->turret_shooting = true;
 			}
 		}
-		if (t->shooting) {
-			t->shoot_time += delta;
-			if (t->shoot_time >= TURRET_BURST_SHOT_DELAY) {
-				t->shoot_time = 0.f;
+		if (t->turret_shooting) {
+			t->turret_shoot_time += delta;
+			if (t->turret_shoot_time >= TURRET_BURST_SHOT_DELAY) {
+				t->turret_shoot_time = 0.f;
 				// spawn projectile
+				gs_vec2 projectile_vel = gs_vec2_scale(target_dir, 100);
+				spawn_projectile(gd, &(projectile_t){
+					.enemy_created = true,
+					.position = t->position,
+					.velocity = projectile_vel,
+					.radius = 4,
+					.accell = 10,
+					.particle_emitter = spawn_particle_emitter(gd, &(particle_emitter_desc_t){
+						.particle_amount = 6,
+						.particle_color = gs_v4(0.3, 0.1, 0.1, 1.0),
+						.particle_lifetime = 0.15,
+						.particle_shink_out = true,
+						.particle_size = gs_v2(8, 8),
+						.position = t->position
+						
+					})
+				});
+				/*
+				spawn_projectile(gd, &(projectile_t){
+					.position = *pos,
+					.velocity = vel,
+					.radius = 5,
+					.particle_emitter = spawn_particle_emitter(gd, &(particle_emitter_desc_t){
+						.particle_amount = 8,
+						.particle_color = gs_v4(0.1, 0.3, 0.3, 1.0),
+						.particle_lifetime = 0.25,
+						.particle_shink_out = true,
+						.particle_size = gs_v2(8, 8),
+						.position = *pos
+						
+					})
+				});
+				
+				*/
+
+
+				t->turret_shot_count++;
+				if (t->turret_shot_count >= TURRET_BURST_COUNT) {
+					t->turret_shot_count = 0;
+					t->turret_shooting = false;
+				}
 			}
 		}
-		gs_vec2 p_pos = gd->player.position;
-		t->angle = atan2f(p_pos.y - t->position.y, p_pos.x - t->position.x);
-		t->dir = gs_vec2_sub(gd->player.position, t->position);
-		t->dir = gs_vec2_norm(t->dir);
+		
 
 	}
 }
@@ -593,14 +788,15 @@ void update_turrets(game_data_t* gd, float delta)
 void spawn_worm(game_data_t* gd, int segments, gs_vec2 pos)
 {
 	entity_t* head = malloc(sizeof(entity_t));
-	head->hp = 3;
-	head->position = pos;
-	head->radius = 5;
-	head->dead = false;
-	head->dead_timer = 0.f;
+	*head = (entity_t){
+		.hp = 3,
+		.position = pos,
+		.radius = 6,
+	};
+
 	
 	
-	head->particle_emitter = spawn_particle_emitter(gd, &(particle_emitter_desc_t){
+	head->worm_particle_emitter = spawn_particle_emitter(gd, &(particle_emitter_desc_t){
 		.particle_amount 	= 10,
 		.particle_color 	= gs_v4(0.4, 0.05, 0.05, 0.5),
 		.particle_lifetime 	= 1.0f,
@@ -619,11 +815,11 @@ void spawn_worm(game_data_t* gd, int segments, gs_vec2 pos)
 		entity_t* segment = malloc(sizeof(entity_t));
 		segment->hp = 1;
 		segment->position = pos;
-		segment->radius = 4 - radius_dec *i * 4;
-		segment->particle_emitter = NULL;
-		segment->segment = NULL;
+		segment->radius = 5 - radius_dec *i * 4;
+		segment->worm_particle_emitter = NULL;
+		segment->worm_segment = NULL;
 
-		parent->segment = segment;
+		parent->worm_segment = segment;
 		parent = segment;
 	}
 	gs_dyn_array_push(gd->worms, head);
@@ -647,9 +843,9 @@ void delete_particle_emitter(particle_emitter_t* p)
 
 void delete_worm(entity_t* worm)
 {
-	if (worm->particle_emitter)
-		worm->particle_emitter->should_delete = true;
-	entity_t* next = worm->segment;
+	if (worm->worm_particle_emitter)
+		worm->worm_particle_emitter->should_delete = true;
+	entity_t* next = worm->worm_segment;
 	free(worm);
 	if (next)
 		delete_worm(next);

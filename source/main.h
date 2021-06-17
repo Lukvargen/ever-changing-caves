@@ -17,7 +17,8 @@
 #define WORM_REPEL_AMOUNT	100.f
 
 #define TURRET_BURST_COUNT	3
-#define TURRET_BURST_SHOT_DELAY	0.1f
+#define TURRET_BURST_SHOT_DELAY	0.2f
+#define TURRET_ANIMATION_SPAWN_TIME 1.f
 
 #define PROJECITLE_MAX_LIFE_TIME 3.f
 #define EXPLODE_DMG 5.f
@@ -143,8 +144,11 @@ typedef struct projectile_t
 {
 	gs_vec2 position;
 	gs_vec2 velocity;
+	float accell;
 	int radius;
 	float life_time;
+	particle_emitter_t* particle_emitter;
+	bool enemy_created;
 } projectile_t;
 
 
@@ -152,16 +156,10 @@ typedef struct entity_t
 {
 	entity_type_t type;
 	int hp;
-	float radius; // ha support för rect hitbox?
-	/*
-	union
-	{
-		float hit_radius;
-		gs_vec2 hit_rect;
-	}
-	*/
+	float radius;
 	bool dead;
 	float dead_timer;
+	float flash;
 	gs_vec2 position;
 	gs_vec2 velocity;
 
@@ -169,21 +167,26 @@ typedef struct entity_t
 	{
 		struct player_t
 		{
-			float player_shoot_time;
+			float player_shoot_time; 
+			particle_emitter_t* player_particle_emitter;
+			// går inte ha samma namn i olika strucs i unions. Obviously men kanske ha name_varname före alla?
 		};
 		struct worm_t
 		{
-			struct entity_t* segment; // skulle kunna ha worm segment struct. Beror på om jag vill att segmenten faktiskt ska göra något
-			particle_emitter_t* particle_emitter;
+			struct entity_t* worm_segment; // skulle kunna ha worm segment struct. Beror på om jag vill att segmenten faktiskt ska göra något
+			particle_emitter_t* worm_particle_emitter;
 		};
-		struct turret_t
+		struct turret_t // kan krasha om inte ordningen är på visst sätt. borde inte auto padding?
 		{
-			float shoot_time;
-			float shoot_delay;
-			int shot_count;
-			gs_vec2 dir;
-			float angle;
-			bool shooting;
+			float turret_shoot_time;
+			float turret_shoot_delay;
+			float turret_angle;
+			int turret_shot_count;
+			gs_vec2 turret_dir;
+			float turret_time_since_spawn;
+			bool turret_shooting;
+			
+
 		};
 	};
 } entity_t;
@@ -234,6 +237,7 @@ typedef struct game_data_t
 	gs_handle(gs_graphics_shader_t) entity_shader;
 	gs_handle(gs_graphics_uniform_t) u_entity_texture;
 	gs_handle(gs_graphics_uniform_t) u_entity_color;
+	gs_handle(gs_graphics_uniform_t) u_entity_flash;
 	gs_handle(gs_graphics_uniform_t) u_entity_mvp;
 
 	gs_dyn_array(entity_t*) worms;
@@ -252,6 +256,8 @@ typedef struct game_data_t
 	float shake_time;
 
 	gs_dyn_array(particle_emitter_t*) particle_emitters;
+
+	gs_dyn_array(entity_t**) enemies; // array med pekare till pekaren som visar en dyn array med pekare..
 
 	
 

@@ -7,6 +7,8 @@
 
 gs_asset_texture_t circle_16px; // not the best way...
 gs_asset_texture_t turret_png;
+gs_asset_texture_t turret_barrel_png;
+gs_asset_texture_t worm_png;
 
 // Forward Declares
 void draw_tiles(game_data_t* gd, gs_command_buffer_t* gcb);
@@ -19,12 +21,16 @@ void init_entities(game_data_t* gd);
 
 void graphics_init(game_data_t* gd)
 {
+	
+
     gd->gcb = gs_command_buffer_new();
 	gd->gsi = gs_immediate_draw_new();
 
 	//gs_graphics_texture_desc_t desc = {0}
 	gs_asset_texture_load_from_file("./assets/Circle16.png", &circle_16px, NULL, true, false);
 	gs_asset_texture_load_from_file("./assets/Turret.png", &turret_png, NULL, true, false);
+	gs_asset_texture_load_from_file("./assets/TurretBarrel.png", &turret_barrel_png, NULL, true, false);
+	gs_asset_texture_load_from_file("./assets/Worm.png", &worm_png, NULL, true, false);
 
     init_tiles(gd);
     init_screen_quad(gd);
@@ -91,8 +97,8 @@ void draw_game(game_data_t* gd)
 		gs_graphics_set_viewport(gcb, 0, 0, RESOLUTION_X, RESOLUTION_Y); // fit the texture
 		gs_graphics_clear(gcb, &fb_clear);
 		draw_tiles(gd, gcb);
-		draw_particles(gd, gcb);
 		gsi_draw(gsi, gcb);
+		draw_particles(gd, gcb);
 		draw_entities(gd, gcb);
 	gs_graphics_end_render_pass(gcb);
 
@@ -358,6 +364,16 @@ void init_entities(game_data_t* gd)
 			.layout = &(gs_graphics_uniform_layout_desc_t){.type = GS_GRAPHICS_UNIFORM_VEC4}
 		}
 	);
+	gd->u_entity_flash = gs_graphics_uniform_create(
+		&(gs_graphics_uniform_desc_t) {
+			.stage = GS_GRAPHICS_SHADER_STAGE_FRAGMENT,
+			.name = "u_flash",
+			.layout = &(gs_graphics_uniform_layout_desc_t){.type = GS_GRAPHICS_UNIFORM_FLOAT}
+		}
+	);
+
+
+	
 
 	gd->entity_vbo = gs_graphics_vertex_buffer_create(
 		&(gs_graphics_vertex_buffer_desc_t) {
@@ -542,11 +558,13 @@ void draw_entities(game_data_t* gd, gs_command_buffer_t* gcb)
 {
 
 	gs_vec4 color;
+	float flash;
 	gs_mat4 mvp;
 	gs_asset_texture_t tex = circle_16px;
 	// just set gs_mat4 mvp model view projection uniform 
 	gs_graphics_bind_uniform_desc_t uniforms[] = {
 		(gs_graphics_bind_uniform_desc_t){.uniform = gd->u_entity_color, .data = &color},
+		(gs_graphics_bind_uniform_desc_t){.uniform = gd->u_entity_flash, .data = &flash},
 		(gs_graphics_bind_uniform_desc_t){.uniform = gd->u_entity_mvp, .data = &mvp},
 		(gs_graphics_bind_uniform_desc_t){.uniform = gd->u_entity_texture, .data = &tex}, // texture borde vara atlas och bara ändras 1 gång
 	};
@@ -562,6 +580,7 @@ void draw_entities(game_data_t* gd, gs_command_buffer_t* gcb)
 	{
 
 		color = gs_v4(50/255.0, 150/255.0, 50/255.0, 1.0);
+		flash = gd->player.flash;
 		gs_mat4 translation = gs_mat4_translate(gd->player.position.x, gd->player.position.y, 0.0f);
 		float size = gd->player.radius * 2;
 		gs_mat4 model = gs_mat4_mul(translation, gs_mat4_scale(size, size, 0));
@@ -577,6 +596,7 @@ void draw_entities(game_data_t* gd, gs_command_buffer_t* gcb)
 		powerup_t *p = gd->powerups[i];
 
 		color = gs_v4(50/255.0, 50/255.0, 200/255.0, 1.0);
+		flash = 0;
 		gs_mat4 translation = gs_mat4_translate(p->position.x, p->position.y, 0.0f);
 		float size = p->radius * 2;
 		gs_mat4 model = gs_mat4_mul(translation, gs_mat4_scale(size, size, 0));
@@ -589,11 +609,14 @@ void draw_entities(game_data_t* gd, gs_command_buffer_t* gcb)
 
 
 	// Worms
+	tex = worm_png;
 	for (int i = 0; i < gs_dyn_array_size(gd->worms); i++) {
 		entity_t* head = gd->worms[i];
 		gs_vec2 pos = head->position;
 
 		color = gs_v4(200/255.0, 20/255.0, 20/255.0, 1.0);
+		flash = head->flash;
+		//printf("flash %f \n", flash);
 		gs_mat4 translation = gs_mat4_translate(pos.x, pos.y, 0.0f);
 		float size = head->radius * 2;
 		gs_mat4 model = gs_mat4_mul(translation, gs_mat4_scale(size, size, 0));
@@ -612,8 +635,8 @@ void draw_entities(game_data_t* gd, gs_command_buffer_t* gcb)
 
 		entity_t* parent = head;
 		int i = 0;
-		while (parent->segment) {
-			entity_t* child = parent->segment;
+		while (parent->worm_segment) {
+			entity_t* child = parent->worm_segment;
 			pos = child->position;
 			alpha = 1 * (1-(max(dead_timer - 0.05*i, 0)/0.25)); 
 			alpha = max(alpha, 0);
@@ -621,7 +644,7 @@ void draw_entities(game_data_t* gd, gs_command_buffer_t* gcb)
 
 			color = gs_v4(0.6 - 0.04 * i, 20/255.0, 20/255.0, alpha);
 			gs_mat4 translation = gs_mat4_translate(pos.x, pos.y, 0.0f);
-			size = (child->radius*2) -i;
+			size = (child->radius*2);
 			gs_mat4 model = gs_mat4_mul(translation, gs_mat4_scale(size, size, 0));
 			mvp = gs_mat4_mul(gd->projection, model);
 
@@ -635,10 +658,12 @@ void draw_entities(game_data_t* gd, gs_command_buffer_t* gcb)
 
 	
 	// Projectiles
+	tex = circle_16px;
 	for (int i = 0; i < gs_dyn_array_size(gd->projecitles); i++) {
 		projectile_t* p = &gd->projecitles[i];
 
 		color = gs_v4(50/255.0, 50/255.0, 50/255.0, 1.0);
+		flash = 0;
 		gs_mat4 translation = gs_mat4_translate(p->position.x, p->position.y, 0.0f);
 		float size = 2 * p->radius * (1-(p->life_time / PROJECITLE_MAX_LIFE_TIME*1.f));
 		gs_mat4 model = gs_mat4_mul(translation, gs_mat4_scale(size, size, 0));
@@ -650,16 +675,42 @@ void draw_entities(game_data_t* gd, gs_command_buffer_t* gcb)
 
 	// turrets
 	tex = turret_png;
+	int turret_size = turret_png.desc.width;
+	int turret_barrel_size = turret_barrel_png.desc.width;
 	int t_size = gs_dyn_array_size(gd->turrets);
 	for (int i = 0; i < t_size; i++) {
 		entity_t* t = gd->turrets[i];
 
 		color = gs_v4(1.0, 1.0, 1.0, 1.0);
+		flash = t->flash;
+		tex = turret_png;
 
-		gs_mat4 rot = gs_mat4_rotate(t->angle, 0, 0, 1);
+		//gs_mat4 rot = gs_mat4_rotate(t->angle, 0, 0, 1);
 		gs_mat4 translation = gs_mat4_translate(t->position.x, t->position.y, 0.0f);
-		float size = 2 * t->radius;
-		gs_mat4 model = gs_mat4_mul_list(3, translation, gs_mat4_scale(size, size, 0), rot);
+		//float size = 16;
+		float size = turret_size * gs_min(1.0, t->turret_time_since_spawn / TURRET_ANIMATION_SPAWN_TIME);
+		gs_mat4 model = gs_mat4_mul_list(2, translation, gs_mat4_scale(size, size, 0));
+
+		mvp = gs_mat4_mul(gd->projection, model);
+
+		gs_graphics_apply_bindings(gcb, &binds);
+		gs_graphics_draw(gcb, &(gs_graphics_draw_desc_t){.start = 0, .count = 6});
+
+		// barrel
+		tex = turret_barrel_png;
+		gs_mat4 rot = gs_mat4_rotate(t->turret_angle, 0, 0, 1);
+		float x_offset = 0;
+		float y_offset = 0;
+		if (t->turret_shooting) {
+			float time_since_shot = t->turret_shoot_time;
+			float offset_power = (1- gs_min(time_since_shot/TURRET_BURST_SHOT_DELAY, 1.f));
+			x_offset = cos(t->turret_angle) * -5 * offset_power;
+			y_offset = sin(t->turret_angle) * -5 * offset_power;
+			
+		}
+		translation = gs_mat4_translate(t->position.x + x_offset, t->position.y + y_offset, 0.0f);
+		size = turret_barrel_size * gs_min(1.0, t->turret_time_since_spawn / TURRET_ANIMATION_SPAWN_TIME);
+		model = gs_mat4_mul_list(3, translation, gs_mat4_scale(size, size, 0), rot);
 
 		mvp = gs_mat4_mul(gd->projection, model);
 

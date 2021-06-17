@@ -93,7 +93,7 @@ GS_VERSION_STR
 "   color.g = clamp(color.g * 1.1, 0.0, 1.0);\n"
 "   color.b = clamp(color.b * 1.1, 0.0, 1.0);\n"
 
-"   float saturation = 0.2;\n"
+"   float saturation = 0.1;\n"
 "   float contrast = 1.2;\n"
 "   vec3 greyscale = vec3(color.r + color.g + color.b)/3.0;\n"
 "   color.rgb = mix(color.rgb, greyscale, saturation);\n"
