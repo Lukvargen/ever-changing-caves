@@ -12,6 +12,9 @@
         "type_traits": "c",
         "cmath": "c",
         "xiosbase": "c",
-        "iterator": "c"
+        "iterator": "c",
+        "atomic": "c",
+        "tuple": "c",
+        "utility": "c"
     }
 }

@@ -192,6 +192,13 @@ typedef struct entity_t
 } entity_t;
 
 
+// TODO
+/*
+Ändra alla dyn_array(entity_t*) till entity_t
+Inte så mycket jobb och det är bättre.
+Skulle man behöva ref till en entity så får jag ta och fixa slot_array
+*/
+
 typedef struct game_data_t 
 {
 	gs_command_buffer_t gcb;

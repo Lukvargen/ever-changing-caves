@@ -97,6 +97,8 @@ void init()
 
 
 	spawn_player(gd);
+
+
 }
 
 
@@ -128,6 +130,7 @@ void update()
 	update_tiles(gd);
 	update_particle_emitters(gd, delta);
 
+
 	
 	draw_game(gd);
 
@@ -143,7 +146,7 @@ void update_tiles(game_data_t* gd)
 {
 	float delta = gs_platform_delta_time();
 	float time = gs_platform_elapsed_time() * 0.0001f;
-	//t += delta * 0.1;
+	
 	for (int x = 0; x < TILES_SIZE_X; x++) {
 		for (int y = 0; y < TILES_SIZE_Y; y++) {
 			tile_t* tile = &gd->tiles[x][y];
@@ -201,11 +204,43 @@ void update_player(game_data_t* gd)
 	
 	dir = gs_vec2_norm(dir);
 	
+	
 	vel->x += delta * PLAYER_ACCEL * ((dir.x * PLAYER_SPEED) - vel->x);
 	vel->y += delta * PLAYER_ACCEL * ((dir.y * PLAYER_SPEED) - vel->y);
-	
-	pos->x += vel->x * delta;
-	pos->y += vel->y * delta;
+
+	// handel collision with walls
+	int tile_x = pos->x/TILE_SIZE;
+	int tile_y = pos->y/TILE_SIZE;
+	if (is_tile_solid(gd, tile_x, tile_y)) {
+		
+		// take dmg or something
+		// maybe explode after some time
+		explode_tiles(gd, tile_x, tile_y, 3);
+	} else {
+		pos->x += vel->x * delta;
+		pos->y += vel->y * delta;
+
+		int center_y = pos->y / TILE_SIZE;
+		int left_tile_pos = (pos->x - p->radius)/TILE_SIZE;
+		int right_tile_pos = (pos->x + p->radius)/TILE_SIZE;
+		if (is_tile_solid(gd, right_tile_pos, center_y)) {
+			pos->x = right_tile_pos*TILE_SIZE - p->radius;
+			p->velocity.x = 0;
+		} else if (is_tile_solid(gd, left_tile_pos, center_y)) {
+			pos->x = left_tile_pos*TILE_SIZE + TILE_SIZE + p->radius;
+			p->velocity.x = 0;
+		}
+		int center_x = pos->x / TILE_SIZE;
+		int up_tile_pos = (pos->y - p->radius)/TILE_SIZE;
+		int down_tile_pos = (pos->y + p->radius)/TILE_SIZE;
+		if (is_tile_solid(gd, center_x, down_tile_pos)) {
+			pos->y = down_tile_pos*TILE_SIZE - p->radius;
+			p->velocity.y = 0;
+		} else if (is_tile_solid(gd, center_x, up_tile_pos)) {
+			pos->y = up_tile_pos*TILE_SIZE + TILE_SIZE + p->radius;
+			p->velocity.y = 0;
+		}
+	}
 
 	p->player_particle_emitter->position = p->position;
 
@@ -318,10 +353,12 @@ void update_projectiles(game_data_t* gd)
 						continue;
 					if (is_colliding(*pos, enemy->position, p->radius, enemy->radius)) {
 						//gs_println("Collision with worm");
+						
 						should_delete = true;
 						gd->shake_time = 0.05;
 						explode_tiles(gd, tile_x, tile_y, 5);
 						gs_vec2 projectile_dir = gs_vec2_norm(p->velocity);
+						// TODO make hit(entity) function
 						enemy->hp -= 1;
 						enemy->flash = 1.0;
 						enemy->velocity = gs_vec2_add(enemy->velocity, gs_vec2_scale(projectile_dir, 200));
