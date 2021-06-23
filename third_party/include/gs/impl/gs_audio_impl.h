@@ -568,6 +568,7 @@ void ma_audio_commit(ma_device* device, void* output, const void* input, ma_uint
         // }
     }
 
+
     gs_audio_mutex_unlock(audio);
 }
 

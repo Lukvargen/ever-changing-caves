@@ -62,7 +62,9 @@ typedef struct entity_t
 typedef enum entity_type_t
 {
 	ENTITY_TYPE_PLAYER,
-	ENTITY_TYPE_WORM
+	ENTITY_TYPE_WORM,
+	ENTITY_TYPE_TURRET,
+	ENTITY_TYPE_ORB
 } entity_type_t;
 
 
@@ -145,12 +147,35 @@ typedef struct projectile_t
 	gs_vec2 position;
 	gs_vec2 velocity;
 	float accell;
-	int radius;
+	float radius;
 	float life_time;
+	float max_life_time;
 	particle_emitter_t* particle_emitter;
 	bool enemy_created;
+	bool go_through_walls;
 } projectile_t;
 
+typedef struct crystal_t
+{
+	gs_vec2 position;
+	gs_vec2 velocity;
+	float radius;
+	float time_alive;
+	particle_emitter_t* particle_emitter;
+} crystal_t;
+
+typedef enum orb_type_t
+{
+	ORB_TYPE_PINK,
+	ORB_TYPE_BLUE,
+	ORB_TYPE_SIZE
+} orb_type_t;
+
+typedef enum turret_type_t
+{
+	TURRET_TYPE_NORMAL,
+	TURRET_TYPE_WORM_SPAWN
+} turret_type_t;
 
 typedef struct entity_t
 {
@@ -162,6 +187,7 @@ typedef struct entity_t
 	float flash;
 	gs_vec2 position;
 	gs_vec2 velocity;
+	gs_vec4 color;
 
 	union
 	{
@@ -185,11 +211,37 @@ typedef struct entity_t
 			gs_vec2 turret_dir;
 			float turret_time_since_spawn;
 			bool turret_shooting;
+			turret_type_t turret_type;
 			
 
 		};
+		struct orb_t
+		{
+			particle_emitter_t* orb_particle_emitter;
+			orb_type_t orb_type;
+			float target_speed;
+		};
+		
 	};
 } entity_t;
+
+typedef enum button_type_t
+{
+	BUTTON_TYPE_UPGRADE,
+} button_type_t;
+
+typedef struct button_t
+{
+	gs_vec2 position;
+	gs_vec2 size;
+	button_type_t type;
+} button_t;
+
+typedef struct shop_ui_t
+{
+	bool visible;
+	gs_dyn_array(button_t) buttons;
+} shop_ui_t;
 
 
 // TODO
@@ -197,6 +249,7 @@ typedef struct entity_t
 Ändra alla dyn_array(entity_t*) till entity_t
 Inte så mycket jobb och det är bättre.
 Skulle man behöva ref till en entity så får jag ta och fixa slot_array
+Eeelller spelar det ingen större roll.
 */
 
 typedef struct game_data_t 
@@ -258,6 +311,13 @@ typedef struct game_data_t
 	gs_dyn_array(entity_t*) turrets;
 	float turret_spawn_timer;
 	float turret_spawn_time;
+	
+	gs_dyn_array(entity_t*) orbs;
+	float orb_spawn_timer;
+	float orb_spawn_time;
+
+	gs_dyn_array(crystal_t) crystals;
+	int crystals_currency;
 
 	gs_mat4 projection;
 	float shake_time;
@@ -266,7 +326,7 @@ typedef struct game_data_t
 
 	gs_dyn_array(entity_t**) enemies; // array med pekare till pekaren som visar en dyn array med pekare..
 
-	
+	shop_ui_t shop_ui;
 
 } game_data_t;
 

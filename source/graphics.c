@@ -37,6 +37,7 @@ void graphics_init(game_data_t* gd)
     init_framebuffer(gd);
 	init_particles(gd);
 	init_entities(gd);
+	
 
 }
 
@@ -65,6 +66,7 @@ void draw_game(game_data_t* gd)
 
 
 	
+
 	/*
 	// Hpbar
 	{
@@ -88,17 +90,43 @@ void draw_game(game_data_t* gd)
 	}
 	*/
 
-	// immediate draw submit and render pass
-	
 
-	//gsi_text(gsi, RESOLUTION_X/2, 50, "Some text!", NULL, false, 255,255,255,255);
+	if (gd->shop_ui.visible) {
+		for (int i = 0; i < gs_dyn_array_size(gd->shop_ui.buttons); i++) {
+			button_t* button = &gd->shop_ui.buttons[i];
+			//gsi_rectv(gsi, button->position, button->size, gs_color(1, 1, 1, 1), GS_GRAPHICS_PRIMITIVE_TRIANGLES);
+			gsi_rect(gsi, button->position.x, button->position.y, 
+				button->position.x + button->size.x, button->position.y + button->size.y,
+				50, 50, 50, 255, GS_GRAPHICS_PRIMITIVE_TRIANGLES);
+			
+			gsi_rect(gsi, button->position.x, button->position.y, 
+				button->position.x + button->size.x, button->position.y + button->size.y,
+				100, 100, 100, 255, GS_GRAPHICS_PRIMITIVE_LINES);
+			
+			gsi_text(gsi, button->position.x, button->position.y, "BUTTON", NULL, false, 255,255,255,255);
+		}
+	}
+
+
+	// immediate draw submit and render pass
+	// fackar upp om man målar något efter här så att du vet de
+	char str1[100] = "CRYSTALS: ";
+	int length = snprintf(NULL, 0, "%d", gd->crystals_currency);
+	char* crystals_str = malloc(length+1);
+	snprintf(crystals_str, length+1, "%d", gd->crystals_currency);
+	strcat(str1, crystals_str);
+	gsi_text(gsi, 25, 25, str1, NULL, false, 255,255,255,255);
+	free(crystals_str);
+
+
+
 	// render to frame buffer
 	gs_graphics_begin_render_pass(gcb, gd->rp);
 		gs_graphics_set_viewport(gcb, 0, 0, RESOLUTION_X, RESOLUTION_Y); // fit the texture
 		gs_graphics_clear(gcb, &fb_clear);
 		draw_tiles(gd, gcb);
-		gsi_draw(gsi, gcb);
 		draw_particles(gd, gcb);
+		gsi_draw(gsi, gcb);
 		draw_entities(gd, gcb);
 	gs_graphics_end_render_pass(gcb);
 
@@ -665,7 +693,7 @@ void draw_entities(game_data_t* gd, gs_command_buffer_t* gcb)
 		color = gs_v4(50/255.0, 50/255.0, 50/255.0, 1.0);
 		flash = 0;
 		gs_mat4 translation = gs_mat4_translate(p->position.x, p->position.y, 0.0f);
-		float size = 2 * p->radius * (1-(p->life_time / PROJECITLE_MAX_LIFE_TIME*1.f));
+		float size = 2 * p->radius * (1-(p->life_time / p->max_life_time));
 		gs_mat4 model = gs_mat4_mul(translation, gs_mat4_scale(size, size, 0));
 		mvp = gs_mat4_mul(gd->projection, model);
 
@@ -699,18 +727,37 @@ void draw_entities(game_data_t* gd, gs_command_buffer_t* gcb)
 		// barrel
 		tex = turret_barrel_png;
 		gs_mat4 rot = gs_mat4_rotate(t->turret_angle, 0, 0, 1);
-		float x_offset = 0;
-		float y_offset = 0;
-		if (t->turret_shooting) {
-			float time_since_shot = t->turret_shoot_time;
-			float offset_power = (1- gs_min(time_since_shot/TURRET_BURST_SHOT_DELAY, 1.f));
-			x_offset = cos(t->turret_angle) * -5 * offset_power;
-			y_offset = sin(t->turret_angle) * -5 * offset_power;
-			
-		}
+
+		float time_since_shot = t->turret_shoot_time;
+		float offset_power = (1- gs_min(time_since_shot/TURRET_BURST_SHOT_DELAY, 1.f));
+		float x_offset = cos(t->turret_angle) * -5 * offset_power;
+		float y_offset = sin(t->turret_angle) * -5 * offset_power;
+		
+		
 		translation = gs_mat4_translate(t->position.x + x_offset, t->position.y + y_offset, 0.0f);
 		size = turret_barrel_size * gs_min(1.0, t->turret_time_since_spawn / TURRET_ANIMATION_SPAWN_TIME);
 		model = gs_mat4_mul_list(3, translation, gs_mat4_scale(size, size, 0), rot);
+
+		mvp = gs_mat4_mul(gd->projection, model);
+
+		gs_graphics_apply_bindings(gcb, &binds);
+		gs_graphics_draw(gcb, &(gs_graphics_draw_desc_t){.start = 0, .count = 6});
+	}
+
+	// orbs
+	int o_size = gs_dyn_array_size(gd->orbs);
+	for (int i = 0; i < o_size; i++) {
+		entity_t* o = gd->orbs[i];
+
+		color = o->color;
+		flash = o->flash;
+		tex = circle_16px;
+
+		//gs_mat4 rot = gs_mat4_rotate(t->angle, 0, 0, 1);
+		gs_mat4 translation = gs_mat4_translate(o->position.x, o->position.y, 0.0f);
+		//float size = 16;
+		float size = o->radius;
+		gs_mat4 model = gs_mat4_mul_list(2, translation, gs_mat4_scale(size, size, 0));
 
 		mvp = gs_mat4_mul(gd->projection, model);
 
