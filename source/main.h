@@ -10,6 +10,7 @@
 #define PLAYER_SPEED	150.f
 #define PLAYER_ACCEL	8.f
 #define PLAYER_SHOOT_TIMER	0.25f
+#define PLAYER_MAX_HP	10
 
 #define WORM_MAX_VELOCITY	200.f
 #define WORM_MAX_FORCE		6.f
@@ -177,6 +178,12 @@ typedef enum turret_type_t
 	TURRET_TYPE_WORM_SPAWN
 } turret_type_t;
 
+typedef enum worm_type_t
+{
+	WORM_TYPE_NORMAL,
+	WORM_TYPE_SINUS
+} worm_type_t;
+
 typedef struct entity_t
 {
 	entity_type_t type;
@@ -185,9 +192,11 @@ typedef struct entity_t
 	bool dead;
 	float dead_timer;
 	float flash;
+	float time_alive;
 	gs_vec2 position;
 	gs_vec2 velocity;
 	gs_vec4 color;
+
 
 	union
 	{
@@ -201,6 +210,7 @@ typedef struct entity_t
 		{
 			struct entity_t* worm_segment; // skulle kunna ha worm segment struct. Beror på om jag vill att segmenten faktiskt ska göra något
 			particle_emitter_t* worm_particle_emitter;
+			worm_type_t worm_type;
 		};
 		struct turret_t // kan krasha om inte ordningen är på visst sätt. borde inte auto padding?
 		{
@@ -227,7 +237,7 @@ typedef struct entity_t
 
 typedef enum button_type_t
 {
-	BUTTON_TYPE_UPGRADE,
+	BUTTON_TYPE_UPGRADE_DMG,
 } button_type_t;
 
 typedef struct button_t
@@ -240,7 +250,7 @@ typedef struct button_t
 typedef struct shop_ui_t
 {
 	bool visible;
-	gs_dyn_array(button_t) buttons;
+	gs_dyn_array(button_t) upgrade_buttons;
 } shop_ui_t;
 
 
@@ -301,6 +311,7 @@ typedef struct game_data_t
 	gs_handle(gs_graphics_uniform_t) u_entity_mvp;
 
 	gs_dyn_array(entity_t*) worms;
+	int worms_left_to_spawn;
 	float worm_spawn_timer;
 	float worm_spawn_time;
 
@@ -309,10 +320,12 @@ typedef struct game_data_t
 	float powerup_spawn_time;
 
 	gs_dyn_array(entity_t*) turrets;
+	int turrets_left_to_spawn;
 	float turret_spawn_timer;
 	float turret_spawn_time;
 	
 	gs_dyn_array(entity_t*) orbs;
+	int orbs_left_to_spawn;
 	float orb_spawn_timer;
 	float orb_spawn_time;
 
@@ -327,6 +340,8 @@ typedef struct game_data_t
 	gs_dyn_array(entity_t**) enemies; // array med pekare till pekaren som visar en dyn array med pekare..
 
 	shop_ui_t shop_ui;
+
+	int wave;
 
 } game_data_t;
 

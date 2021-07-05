@@ -10,6 +10,9 @@ gs_asset_texture_t turret_png;
 gs_asset_texture_t turret_barrel_png;
 gs_asset_texture_t worm_png;
 
+gs_asset_font_t font_medium;
+gs_asset_font_t font_small;
+
 // Forward Declares
 void draw_tiles(game_data_t* gd, gs_command_buffer_t* gcb);
 void draw_screen(game_data_t* gd, gs_command_buffer_t* gcb);
@@ -31,6 +34,8 @@ void graphics_init(game_data_t* gd)
 	gs_asset_texture_load_from_file("./assets/Turret.png", &turret_png, NULL, true, false);
 	gs_asset_texture_load_from_file("./assets/TurretBarrel.png", &turret_barrel_png, NULL, true, false);
 	gs_asset_texture_load_from_file("./assets/Worm.png", &worm_png, NULL, true, false);
+	gs_asset_font_load_from_file("./assets/joystix monospace.ttf", &font_medium, 16);
+	gs_asset_font_load_from_file("./assets/joystix monospace.ttf", &font_small, 14);
 
     init_tiles(gd);
     init_screen_quad(gd);
@@ -67,12 +72,14 @@ void draw_game(game_data_t* gd)
 
 	
 
-	/*
+	
 	// Hpbar
+	int hp_bar_end = TILE_SIZE* 20;
+	int hp_bar_size = TILE_SIZE * 4;
 	{
 		float l = TILE_SIZE;
-		float b = TILE_SIZE * 4;
-		float r = TILE_SIZE * 20;
+		float b = hp_bar_size;
+		float r = hp_bar_end;
 		float t = TILE_SIZE;
 		gsi_rect(gsi, l, b, r, t,
 		0, 0, 0, 255, GS_GRAPHICS_PRIMITIVE_TRIANGLES);
@@ -83,18 +90,64 @@ void draw_game(game_data_t* gd)
 		t += padding;
 		gsi_rect(gsi, l, b, r, t,
 		200, 0, 0, 255, GS_GRAPHICS_PRIMITIVE_TRIANGLES);
-		float percent = 0.4;
+		float percent = gd->player.hp / (PLAYER_MAX_HP*1.0f);
 		r = l + (r-l) * percent;
 		gsi_rect(gsi, l, b, r, t,
 		0, 200, 0, 255, GS_GRAPHICS_PRIMITIVE_TRIANGLES);
 	}
-	*/
-
-
+	char str1[100] = "CRYSTALS: ";
+	int length = snprintf(NULL, 0, "%d", gd->crystals_currency);
+	char* crystals_str = malloc(length+1);
+	snprintf(crystals_str, length+1, "%d", gd->crystals_currency);
+	strcat(str1, crystals_str);
+	gsi_text(gsi, 16, hp_bar_size + 12, str1, &font_medium, false, 255,255,255,255);
+	free(crystals_str);
+	
+	gsi_defaults(gsi);
+	
+	
 	if (gd->shop_ui.visible) {
-		for (int i = 0; i < gs_dyn_array_size(gd->shop_ui.buttons); i++) {
-			button_t* button = &gd->shop_ui.buttons[i];
+		int center_x = RESOLUTION_X / 2;
+		int center_y = RESOLUTION_Y / 2;
+		int upgrade_panel_size_x = 300;
+		int upgrade_panel_size_y = 25;
+		int upgrade_btn_size_x = 50;
+		int upgrade_btn_size_y = 25;
+		//int upgrade_panel_x = center_x
+
+		for (int i = 0; i < gs_dyn_array_size(gd->shop_ui.upgrade_buttons); i++) {
+			gsi_ortho(gsi, 0, RESOLUTION_X, RESOLUTION_Y, 0, 0, 100);
+			button_t* button = &gd->shop_ui.upgrade_buttons[i];
+
+			
+
 			//gsi_rectv(gsi, button->position, button->size, gs_color(1, 1, 1, 1), GS_GRAPHICS_PRIMITIVE_TRIANGLES);
+			// draw panel
+			/*
+			int panel_pos_x = center_x - upgrade_panel_size_x/2;
+			int panel_pos_y = RESOLUTION_Y/3 - upgrade_panel_size_y/2 + (upgrade_panel_size_y+10)*i;
+
+			gsi_rect(gsi, panel_pos_x, panel_pos_y, 
+				panel_pos_x + upgrade_panel_size_x, panel_pos_y + upgrade_panel_size_y,
+				50, 50, 50, 255, GS_GRAPHICS_PRIMITIVE_TRIANGLES);
+
+			// draw button
+			gsi_rect(gsi, panel_pos_x, panel_pos_y, 
+				panel_pos_x + upgrade_btn_size_x, panel_pos_y + upgrade_btn_size_y,
+				100, 100, 100, 255, GS_GRAPHICS_PRIMITIVE_TRIANGLES);
+
+			
+			int text_pos_x = panel_pos_x+10;
+			int text_pos_y = panel_pos_y + upgrade_panel_size_y -8;
+			gsi_text(gsi, text_pos_x, text_pos_y, "BUY", &font_medium, false, 255,255,255,255);
+
+			text_pos_x = panel_pos_x + upgrade_btn_size_x + 2;
+			gsi_text(gsi, text_pos_x, text_pos_y, "COST: 100 | Increases dmg", &font_small, false, 255,255,255,255);
+
+			gsi_defaults(gsi);
+			*/
+			
+			/*
 			gsi_rect(gsi, button->position.x, button->position.y, 
 				button->position.x + button->size.x, button->position.y + button->size.y,
 				50, 50, 50, 255, GS_GRAPHICS_PRIMITIVE_TRIANGLES);
@@ -104,19 +157,10 @@ void draw_game(game_data_t* gd)
 				100, 100, 100, 255, GS_GRAPHICS_PRIMITIVE_LINES);
 			
 			gsi_text(gsi, button->position.x, button->position.y, "BUTTON", NULL, false, 255,255,255,255);
+			*/
 		}
 	}
 
-
-	// immediate draw submit and render pass
-	// fackar upp om man målar något efter här så att du vet de
-	char str1[100] = "CRYSTALS: ";
-	int length = snprintf(NULL, 0, "%d", gd->crystals_currency);
-	char* crystals_str = malloc(length+1);
-	snprintf(crystals_str, length+1, "%d", gd->crystals_currency);
-	strcat(str1, crystals_str);
-	gsi_text(gsi, 25, 25, str1, NULL, false, 255,255,255,255);
-	free(crystals_str);
 
 
 
@@ -609,9 +653,18 @@ void draw_entities(game_data_t* gd, gs_command_buffer_t* gcb)
 
 		color = gs_v4(50/255.0, 150/255.0, 50/255.0, 1.0);
 		flash = gd->player.flash;
-		gs_mat4 translation = gs_mat4_translate(gd->player.position.x, gd->player.position.y, 0.0f);
 		float size = gd->player.radius * 2;
+		gs_mat4 translation = gs_mat4_translate(gd->player.position.x, gd->player.position.y, 0.0f);
 		gs_mat4 model = gs_mat4_mul(translation, gs_mat4_scale(size, size, 0));
+		mvp = gs_mat4_mul(gd->projection, model);
+
+		gs_graphics_apply_bindings(gcb, &binds); // kolla om man kan ha 2 apply bindings.
+		gs_graphics_draw(gcb, &(gs_graphics_draw_desc_t){.start = 0, .count = 6});
+
+		size += 2;
+		color = gs_v4(1, 1, 0, 0.2);
+		translation = gs_mat4_translate(gd->player.position.x, gd->player.position.y, 0.0f);
+		model = gs_mat4_mul(translation, gs_mat4_scale(size, size, 0));
 		mvp = gs_mat4_mul(gd->projection, model);
 
 		gs_graphics_apply_bindings(gcb, &binds); // kolla om man kan ha 2 apply bindings.
@@ -642,7 +695,8 @@ void draw_entities(game_data_t* gd, gs_command_buffer_t* gcb)
 		entity_t* head = gd->worms[i];
 		gs_vec2 pos = head->position;
 
-		color = gs_v4(200/255.0, 20/255.0, 20/255.0, 1.0);
+		//color = gs_v4(200/255.0, 20/255.0, 20/255.0, 1.0);
+		color = head->color;
 		flash = head->flash;
 		//printf("flash %f \n", flash);
 		gs_mat4 translation = gs_mat4_translate(pos.x, pos.y, 0.0f);
@@ -669,8 +723,12 @@ void draw_entities(game_data_t* gd, gs_command_buffer_t* gcb)
 			alpha = 1 * (1-(max(dead_timer - 0.05*i, 0)/0.25)); 
 			alpha = max(alpha, 0);
 
+			
+			//color = gs_v4(0.6 - 0.04 * i, 20/255.0, 20/255.0, alpha);
+			color = head->color;
+			color.x -= 0.04 * i;
+			color.w = alpha;
 
-			color = gs_v4(0.6 - 0.04 * i, 20/255.0, 20/255.0, alpha);
 			gs_mat4 translation = gs_mat4_translate(pos.x, pos.y, 0.0f);
 			size = (child->radius*2);
 			gs_mat4 model = gs_mat4_mul(translation, gs_mat4_scale(size, size, 0));
