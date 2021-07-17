@@ -2,6 +2,7 @@
 #define __MAIN__
 #include <gs/gs.h>
 #include <gs/util/gs_idraw.h>
+#include "shop.h"
 
 
 /*======================
@@ -30,9 +31,12 @@
 #define TILE_AIR_THRESHOLD 0.4f
 
 
+
 #define window_size(...)	gs_platform_window_sizev(gs_platform_main_window())
 #define RESOLUTION_X	640.f // 480
 #define RESOLUTION_Y	360.f // 270
+
+
 
 
 typedef enum powerup
@@ -151,10 +155,13 @@ typedef struct projectile_t
 	float radius;
 	float life_time;
 	float max_life_time;
+	int dmg;
 	particle_emitter_t* particle_emitter;
 	bool enemy_created;
 	bool go_through_walls;
 } projectile_t;
+
+
 
 typedef struct crystal_t
 {
@@ -200,19 +207,19 @@ typedef struct entity_t
 
 	union
 	{
-		struct player_t
+		struct // player
 		{
 			float player_shoot_time; 
 			particle_emitter_t* player_particle_emitter;
 			// går inte ha samma namn i olika strucs i unions. Obviously men kanske ha name_varname före alla?
 		};
-		struct worm_t
+		struct // worm
 		{
 			struct entity_t* worm_segment; // skulle kunna ha worm segment struct. Beror på om jag vill att segmenten faktiskt ska göra något
 			particle_emitter_t* worm_particle_emitter;
 			worm_type_t worm_type;
 		};
-		struct turret_t // kan krasha om inte ordningen är på visst sätt. borde inte auto padding?
+		struct // turret // kan krasha om inte ordningen är på visst sätt. borde inte auto padding?
 		{
 			float turret_shoot_time;
 			float turret_shoot_delay;
@@ -225,7 +232,7 @@ typedef struct entity_t
 			
 
 		};
-		struct orb_t
+		struct // orb
 		{
 			particle_emitter_t* orb_particle_emitter;
 			orb_type_t orb_type;
@@ -235,23 +242,8 @@ typedef struct entity_t
 	};
 } entity_t;
 
-typedef enum button_type_t
-{
-	BUTTON_TYPE_UPGRADE_DMG,
-} button_type_t;
 
-typedef struct button_t
-{
-	gs_vec2 position;
-	gs_vec2 size;
-	button_type_t type;
-} button_t;
 
-typedef struct shop_ui_t
-{
-	bool visible;
-	gs_dyn_array(button_t) upgrade_buttons;
-} shop_ui_t;
 
 
 // TODO
@@ -261,6 +253,7 @@ Inte så mycket jobb och det är bättre.
 Skulle man behöva ref till en entity så får jag ta och fixa slot_array
 Eeelller spelar det ingen större roll.
 */
+
 
 typedef struct game_data_t 
 {
@@ -339,10 +332,14 @@ typedef struct game_data_t
 
 	gs_dyn_array(entity_t**) enemies; // array med pekare till pekaren som visar en dyn array med pekare..
 
-	shop_ui_t shop_ui;
+	struct shop_t shop;
 
 	int wave;
 
 } game_data_t;
+
+
+gs_vec2 get_world_mouse_pos();
+char* projectile_to_string(projectile_t* p);
 
 #endif

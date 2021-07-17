@@ -1,4 +1,5 @@
 #include "graphics.h"
+#include "ui.h"
 #include "../data/tile_data.c"
 #include "../data/screen_quad_data.c"
 #include "../data/particle_data.c"
@@ -106,7 +107,8 @@ void draw_game(game_data_t* gd)
 	gsi_defaults(gsi);
 	
 	
-	if (gd->shop_ui.visible) {
+	
+	if (gd->shop.visible) {
 		int center_x = RESOLUTION_X / 2;
 		int center_y = RESOLUTION_Y / 2;
 		int upgrade_panel_size_x = 300;
@@ -114,50 +116,74 @@ void draw_game(game_data_t* gd)
 		int upgrade_btn_size_x = 50;
 		int upgrade_btn_size_y = 25;
 		//int upgrade_panel_x = center_x
+		
+		// gsi_text(gsi, 50, 300, "some\ntext", &font_small, false, 200, 200, 200, 255);
+		gs_vec2 panel_pos = gs_v2(RESOLUTION_X/3, 150);
+		for (int i = 0; i < SHOP_UPGRADES_SIZE; i++) {
+			#define TEXT_SIZE 128
+			char text[TEXT_SIZE];
+			text[0] = '\0';
+			upgrade_t* upgrade = &gd->shop.upgrades_available[i];
 
-		for (int i = 0; i < gs_dyn_array_size(gd->shop_ui.upgrade_buttons); i++) {
+			
+			switch(upgrade->type) {
+				case (UPGRADE_TYPE_DMG):
+					#define DMG_INCREASE 1
+					gs_snprintf(text, TEXT_SIZE, "DMG+%i (%i->%i)", DMG_INCREASE, 1, 2);
+					break;
+				default:
+					gs_snprintf(text, TEXT_SIZE, "ERROR");
+					gs_println("NO UPGRADE TYPE");
+					break;
+
+
+			}
+			//gs_println("cost: %d", upgrade->cost);
+			gs_snprintfc(cost_text, TEXT_SIZE, "\n \nCost %i", upgrade->cost);
+			strcat(text, cost_text);
+
 			gsi_ortho(gsi, 0, RESOLUTION_X, RESOLUTION_Y, 0, 0, 100);
-			button_t* button = &gd->shop_ui.upgrade_buttons[i];
+			ui_control_t* panel = ui_panel(gsi, &(ui_control_t){
+				.font = font_small,
+				.color = gs_color(20, 20, 20, 255),
+				.pos = panel_pos,
+				.center_x = true,
+				.padding = gs_v2(5,5),
+				.text = text,
+				.font_height = 12,
+				.border = true,
+				.border_color = gs_color(200, 200, 200, 255),
+				//.size = gs_v2(100, 100)
+			});
+			panel_pos.x += panel->size.x+10;
+			gs_vec2 button_pos;
+			button_pos.x = panel->pos.x + panel->size.x / 2;
+			button_pos.y = panel->pos.y + panel->size.y;
+			if (ui_button(gsi, &(ui_control_t){
+				.font = font_small,
+				.color = gs_color(60, 20, 20, 255),
+				.pos = button_pos,
+				.padding = gs_v2(5,5),
+				.text = "BUY",
+				.font_height = 12,
+				.border = true,
+				.center_x = true,
+				.border_color = gs_color(200, 200, 200, 255),
+			})) {
+				printf("pressed button\n");
 
-			
+				switch(upgrade->type) {
+				case (UPGRADE_TYPE_DMG):
+					printf("pressed dmg\n");
+					
+					break;
+				default:
+					break;
 
-			//gsi_rectv(gsi, button->position, button->size, gs_color(1, 1, 1, 1), GS_GRAPHICS_PRIMITIVE_TRIANGLES);
-			// draw panel
-			/*
-			int panel_pos_x = center_x - upgrade_panel_size_x/2;
-			int panel_pos_y = RESOLUTION_Y/3 - upgrade_panel_size_y/2 + (upgrade_panel_size_y+10)*i;
 
-			gsi_rect(gsi, panel_pos_x, panel_pos_y, 
-				panel_pos_x + upgrade_panel_size_x, panel_pos_y + upgrade_panel_size_y,
-				50, 50, 50, 255, GS_GRAPHICS_PRIMITIVE_TRIANGLES);
+			}
+			}
 
-			// draw button
-			gsi_rect(gsi, panel_pos_x, panel_pos_y, 
-				panel_pos_x + upgrade_btn_size_x, panel_pos_y + upgrade_btn_size_y,
-				100, 100, 100, 255, GS_GRAPHICS_PRIMITIVE_TRIANGLES);
-
-			
-			int text_pos_x = panel_pos_x+10;
-			int text_pos_y = panel_pos_y + upgrade_panel_size_y -8;
-			gsi_text(gsi, text_pos_x, text_pos_y, "BUY", &font_medium, false, 255,255,255,255);
-
-			text_pos_x = panel_pos_x + upgrade_btn_size_x + 2;
-			gsi_text(gsi, text_pos_x, text_pos_y, "COST: 100 | Increases dmg", &font_small, false, 255,255,255,255);
-
-			gsi_defaults(gsi);
-			*/
-			
-			/*
-			gsi_rect(gsi, button->position.x, button->position.y, 
-				button->position.x + button->size.x, button->position.y + button->size.y,
-				50, 50, 50, 255, GS_GRAPHICS_PRIMITIVE_TRIANGLES);
-			
-			gsi_rect(gsi, button->position.x, button->position.y, 
-				button->position.x + button->size.x, button->position.y + button->size.y,
-				100, 100, 100, 255, GS_GRAPHICS_PRIMITIVE_LINES);
-			
-			gsi_text(gsi, button->position.x, button->position.y, "BUTTON", NULL, false, 255,255,255,255);
-			*/
 		}
 	}
 
@@ -709,7 +735,8 @@ void draw_entities(game_data_t* gd, gs_command_buffer_t* gcb)
 		float dead_timer = head->dead_timer;
 		if (head->dead) {
 			alpha = 1 * (1-(dead_timer/0.25));
-			alpha = max(alpha, 0);
+			alpha = gs_max(alpha, 0);
+			
 		}
 		color.w = alpha;
 		gs_graphics_apply_bindings(gcb, &binds); // kolla om man kan ha 2 apply bindings.
@@ -720,9 +747,9 @@ void draw_entities(game_data_t* gd, gs_command_buffer_t* gcb)
 		while (parent->worm_segment) {
 			entity_t* child = parent->worm_segment;
 			pos = child->position;
-			alpha = 1 * (1-(max(dead_timer - 0.05*i, 0)/0.25)); 
-			alpha = max(alpha, 0);
-
+			alpha = 1 * (1-(gs_max(dead_timer - 0.05*i, 0)/0.25)); 
+			alpha = gs_max(alpha, 0);
+			
 			
 			//color = gs_v4(0.6 - 0.04 * i, 20/255.0, 20/255.0, alpha);
 			color = head->color;

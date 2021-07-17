@@ -8,8 +8,9 @@ proj_name=App
 proj_root_dir=$(pwd)/../
 
 flags=(
-    -w -s WASM=1 -s USE_WEBGL2=1 -s ASYNCIFY=1 -O1
+    -w -s WASM=1 -s USE_WEBGL2=1 -s ASYNCIFY=1 -O1 -s SINGLE_FILE 
 )
+
 
 # Include directories
 inc=(
@@ -21,13 +22,11 @@ src=(
     ../source/*.c
 )
 
-libs=(
-)
 
 # Build
 emcc ${inc[*]} ${src[*]} ${flags[*]} -o $proj_name.html
 
 cd ..
-
+$SHELL
 
 

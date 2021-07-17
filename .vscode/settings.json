@@ -15,6 +15,8 @@
         "iterator": "c",
         "atomic": "c",
         "tuple": "c",
-        "utility": "c"
+        "utility": "c",
+        "bit": "c",
+        "shop.h": "c"
     }
 }

@@ -12,10 +12,11 @@
 #include "graphics.h"
 
 
-gs_handle(gs_audio_source_t) hit_sound_hndl = {0}; // move me!
+
+gs_handle(gs_audio_source_t) hit_sound_hndl = {0};
 gs_handle(gs_audio_instance_t) hit_sound_instance_hndl = {0};
 
-
+//float max = 1;
 
 // Forward Declares
 void spawn_player(game_data_t* gd);
@@ -30,7 +31,7 @@ void update_particle_emitters(game_data_t* gd, float delta);
 void spawn_turret(game_data_t* gd, gs_vec2 pos, turret_type_t type);
 void update_turrets(game_data_t* gd, float delta);
 
-void spawn_orb(game_data_t* gd, gs_vec2 pos);
+void spawn_orb(game_data_t* gd, orb_type_t orb_type, gs_vec2 pos);
 void update_orbs(game_data_t* gd, float delta);
 
 void spawn_worm(game_data_t* gd, worm_type_t type, int segments, gs_vec2 pos, float radius);
@@ -45,13 +46,15 @@ void delete_particle_emitter(particle_emitter_t* p);
 
 bool is_tile_solid(game_data_t* gd, int tile_x, int tile_y);
 void explode_tiles(game_data_t* gd, int tile_x, int tile_y, int radius);
-gs_vec2 truncate(gs_vec2 v, float max_length);
+gs_vec2 gs_vec2_truncate(gs_vec2 v, float max_length);
 bool is_colliding(gs_vec2 p1, gs_vec2 p2, float r1, float r2);
 gs_vec2 get_world_mouse_pos();
 gs_vec2 steer(gs_vec2 from_pos, gs_vec2 target_pos, gs_vec2 velocity, float max_velocity, float max_force, float max_speed);
 float randf();
 void remove_entity(entity_t* arr[], int* arr_length, int* i);
 void hit_entity(game_data_t* gd, entity_t* entity, gs_vec2 hit_pos, gs_vec2 knock_dir);
+
+char* projectile_to_string();
 
 void next_wave(game_data_t* gd);
 
@@ -60,7 +63,7 @@ void init()
 {
 	game_data_t* gd = gs_engine_user_data(game_data_t);
 	
-	hit_sound_hndl = gs_audio_load_from_file("./assets/Hit_Hurt2.wav");
+	/*hit_sound_hndl = gs_audio_load_from_file("./assets/Hit_Hurt2.wav");
 
 	gs_audio_t* audio = gs_engine_subsystem(audio);
     gs_audio_instance_decl_t decl = gs_default_val();
@@ -69,22 +72,20 @@ void init()
     decl.persistent = false;
     gs_handle(gs_audio_instance_t) hit_sound_instance_hndl = gs_audio_instance_create(&decl);
    // gs_audio_play(hit_sound_instance_hndl);
-
+	*/
 	gs_vec2 ws = window_size();
+	
+	char* buffer[1000];
+	projectile_to_string(buffer, &(projectile_t){
+		0
+	});
+	printf("buffer : %s", buffer);
 
 	// Initialize Game Data
-	gd->shop_ui.upgrade_buttons = NULL;
-	gd->shop_ui.visible = true;
 	
-	button_t button = {
-		.position = gs_v2(200, 200),
-		.size = gs_v2(100, 75),
-		.type = BUTTON_TYPE_UPGRADE_DMG
-	};
-	gs_dyn_array_push(gd->shop_ui.upgrade_buttons, button);
-	gs_dyn_array_push(gd->shop_ui.upgrade_buttons, button);
-	gs_dyn_array_push(gd->shop_ui.upgrade_buttons, button);
 	
+	
+
 	gd->projecitles = NULL;
 	gd->worms = NULL;
 	gd->powerups = NULL;
@@ -113,11 +114,14 @@ void init()
 	}
 
 	
+
+	
 	next_wave(gd);
 	graphics_init(gd);
 	spawn_player(gd);
 
-	
+	shop_init_all_upgrades(gd);
+	shop_show(gd);
 }
 
 
@@ -133,6 +137,8 @@ void update()
 		init();
 		return;
 	}
+	
+	
 
 
 	if (gs_platform_key_pressed(GS_KEYCODE_ENTER)) {
@@ -269,7 +275,7 @@ void update_player(game_data_t* gd)
 	vel->x += delta * PLAYER_ACCEL * ((dir.x * PLAYER_SPEED) - vel->x);
 	vel->y += delta * PLAYER_ACCEL * ((dir.y * PLAYER_SPEED) - vel->y);
 
-	// handel collision with walls
+	// handle collision with walls
 	int tile_x = pos->x/TILE_SIZE;
 	int tile_y = pos->y/TILE_SIZE;
 	if (is_tile_solid(gd, tile_x, tile_y)) {
@@ -1203,7 +1209,7 @@ bool is_colliding(gs_vec2 p1, gs_vec2 p2, float r1, float r2)
 	return gs_vec2_dist(p1, p2) <= r1+r2;
 }
 
-gs_vec2 truncate(gs_vec2 v, float max_length)
+gs_vec2 gs_vec2_truncate(gs_vec2 v, float max_length)
 {
 	if (gs_vec2_len(v) > max_length) {
 		return gs_vec2_scale(gs_vec2_norm(v), max_length);
@@ -1216,15 +1222,24 @@ gs_vec2 steer(gs_vec2 from_pos, gs_vec2 target_pos, gs_vec2 velocity, float max_
 	gs_vec2 desired_vel = gs_vec2_norm(gs_vec2_sub(target_pos, from_pos));
 	desired_vel = gs_vec2_scale(desired_vel, max_velocity);
 	gs_vec2 steering = gs_vec2_sub(desired_vel, velocity);
-	steering = truncate(steering, max_force);
+	steering = gs_vec2_truncate(steering, max_force);
 
 	velocity = gs_vec2_add(velocity, steering);
-	return truncate(velocity, max_speed);
+	return gs_vec2_truncate(velocity, max_speed);
 }
 
-float randf() {
-	return stb_frand();
-	//return (float)rand()/(double)(RAND_MAX);
+float randf()  
+{
+	return (float)stb_frand();
+}
+
+char* projectile_to_string(char* buffer, projectile_t* p)
+{
+	buffer[0] = '\0';
+	strcat(buffer, "Some ");
+	strcat(buffer, "Text");
+	
+	return buffer;
 }
 
 
