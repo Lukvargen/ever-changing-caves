@@ -1,13 +1,9 @@
 #include "shop.h"
 #include "main.h"
 
-void append_all_upgrades(game_data_t* gd, upgrade_type_t type, int cost, int amount)
+void append_all_upgrades(game_data_t* gd, upgrade_t upgrade, int amount)
 {
     for (int i = 0; i < amount; i++) {
-        upgrade_t upgrade = {
-            .type = type,
-            .cost = cost
-        };
         gs_dyn_array_push(gd->shop.all_upgrades, upgrade);
     }
 }
@@ -19,7 +15,56 @@ void shop_init_all_upgrades(game_data_t* gd)
     }
 
     gd->shop.all_upgrades = NULL;
-    append_all_upgrades(gd, UPGRADE_TYPE_DMG, 10, 10);
+    
+    append_all_upgrades(gd, (upgrade_t){
+        .type = UPGRADE_TYPE_DMG,
+        .cost = 25,
+        .ivalue = 1
+    }, 10);
+    append_all_upgrades(gd, (upgrade_t){
+        .type = UPGRADE_TYPE_DMG,
+        .cost = 50,
+        .ivalue = 3
+    }, 5);
+    append_all_upgrades(gd, (upgrade_t){
+        .type = UPGRADE_TYPE_DMG,
+        .cost = 150,
+        .ivalue = 10
+    }, 3);
+
+    append_all_upgrades(gd, (upgrade_t){
+        .type = UPGRADE_TYPE_LIFETIME,
+        .cost = 10,
+        .fvalue = 0.1f
+    }, 10);
+    append_all_upgrades(gd, (upgrade_t){
+        .type = UPGRADE_TYPE_SPEED,
+        .cost = 10,
+        .fvalue = 50.f
+    }, 10);
+    append_all_upgrades(gd, (upgrade_t){
+        .type = UPGRADE_TYPE_ACCELL,
+        .cost = 10,
+        .fvalue = 50.f
+    }, 10);
+
+    append_all_upgrades(gd, (upgrade_t){
+        .type = UPGRADE_TYPE_EXPLODE,
+        .cost = 100,
+        .ivalue = 1
+    }, 3);
+    append_all_upgrades(gd, (upgrade_t){
+        .type = UPGRADE_TYPE_EXPLODE,
+        .cost = 50,
+        .ivalue = 1
+    }, 2);
+    for (int i = 0; i < 10; i++) {
+        append_all_upgrades(gd, (upgrade_t){
+            .type = UPGRADE_TYPE_SHOOT_DELAY,
+            .cost = 30+(3+i * 20),
+            .fvalue = 0.05
+        }, 1);
+    }
 }
 
 uint32_t pos_mod(int value, uint32_t m)

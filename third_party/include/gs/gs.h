@@ -534,6 +534,12 @@
    #define GS_API_DECL   extern
 #endif
 
+#ifdef __cplusplus
+   #define GS_API_PRIVATE   extern "C"
+#else
+   #define GS_API_PRIVATE   extern
+#endif
+
 /*===================
 // PLATFORM DEFINES
 ===================*/
@@ -660,6 +666,8 @@ typedef bool32_t          bool32;
 #define gs_min(A, B) ((A) < (B) ? (A) : (B))
 
 #define gs_clamp(V, MIN, MAX) ((V) > (MAX) ? (MAX) : (V) < (MIN) ? (MIN) : (V))
+
+#define gs_is_nan(V) ((V) != (V))
 
 // Helpful macro for casting one type to another
 #define gs_cast(A, B) ((A*)(B))
@@ -2110,7 +2118,7 @@ uint32_t gs_slot_array_insert_func(void** indices, void** data, void* val, size_
     } while (0)
 
 #define gs_slot_array_exists(__SA, __SID)\
-    (__SID < gs_slot_array_size(__SA))
+    ((__SA) && (__SID) < (uint32_t)gs_dyn_array_size((__SA)->indices) && (__SA)->indices[__SID] != GS_SLOT_ARRAY_INVALID_HANDLE)
 
  #define gs_slot_array_get(__SA, __SID)\
     ((__SA)->data[(__SA)->indices[(__SID) % gs_dyn_array_size(((__SA)->indices))]])
@@ -2167,14 +2175,17 @@ uint32_t gs_slot_array_insert_func(void** indices, void** data, void* val, size_
 // Slot array iterator new
 typedef uint32_t gs_slot_array_iter;
 
-#define gs_slot_array_iter_new(__SA) 0
-
 #define gs_slot_array_iter_valid(__SA, __IT)\
-    ((__IT) < (uint32_t)gs_slot_array_size((__SA)))
+    gs_slot_array_exists(__SA, __IT)
 
 gs_force_inline
-void __gs_slot_array_iter_advance_func(gs_dyn_array(uint32_t) indices, uint32_t* it)
+void _gs_slot_array_iter_advance_func(gs_dyn_array(uint32_t) indices, uint32_t* it)
 {
+    if (!indices) {
+       *it = GS_SLOT_ARRAY_INVALID_HANDLE; 
+        return;
+    }
+
     (*it)++;
     for (; *it < (uint32_t)gs_dyn_array_size(indices); ++*it)
     {\
@@ -2185,8 +2196,25 @@ void __gs_slot_array_iter_advance_func(gs_dyn_array(uint32_t) indices, uint32_t*
     }\
 }
 
+gs_force_inline
+uint32_t _gs_slot_array_iter_find_first_valid_index(gs_dyn_array(uint32_t) indices)
+{
+    if (!indices) return GS_SLOT_ARRAY_INVALID_HANDLE;
+
+    for (uint32_t i = 0; i < (uint32_t)gs_dyn_array_size(indices); ++i)
+    {
+        if (indices[i] != GS_SLOT_ARRAY_INVALID_HANDLE)
+        {
+            return i;
+        }
+    }
+    return GS_SLOT_ARRAY_INVALID_HANDLE;
+}
+
+#define gs_slot_array_iter_new(__SA) (_gs_slot_array_iter_find_first_valid_index((__SA) ? (__SA)->indices : NULL))
+
 #define gs_slot_array_iter_advance(__SA, __IT)\
-    __gs_slot_array_iter_advance_func((__SA)->indices, &(__IT))
+    _gs_slot_array_iter_advance_func((__SA) ? (__SA)->indices : NULL, &(__IT))
 
 #define gs_slot_array_iter_get(__SA, __IT)\
     gs_slot_array_get(__SA, __IT)
@@ -2313,10 +2341,12 @@ gs_command_buffer_t gs_command_buffer_new()
     return cb;
 }
 
-#define gs_command_buffer_write(__CB, __T, __VAL)\
+#define gs_command_buffer_write(__CB, __CT, __C, __T, __VAL)\
     do {\
-        gs_byte_buffer_write(&__CB->commands, __T, __VAL);\
-        __CB->num_commands++;\
+        gs_command_buffer_t* __cb = (__CB);\
+        __cb->num_commands++;\
+        gs_byte_buffer_write(&__cb->commands, __CT, (__C));\
+        gs_byte_buffer_write(&__cb->commands, __T, (__VAL));\
     } while (0)
 
 gs_force_inline 
@@ -2331,6 +2361,11 @@ void gs_command_buffer_free(gs_command_buffer_t* cb)
 {
     gs_byte_buffer_free(&cb->commands);
 }
+
+#define gs_command_buffer_readc(__CB, __T, __NAME)\
+    __T __NAME = gs_default_val();\
+    gs_byte_buffer_read(&(__CB)->commands, __T, &__NAME);
+
 
 #ifndef GS_NO_SHORT_NAME
     typedef gs_command_buffer_t gs_cmdbuf;
@@ -2488,6 +2523,7 @@ GS_API_DECL void gs_paged_allocator_clear(gs_paged_allocator_t* pa);
 #define gs_v4s(__S)  gs_vec4_ctor((__S), (__S), (__S), (__S))
 
 #define gs_v4_xy_v(__X, __Y, __V) gs_vec4_ctor((__X), (__Y), (__V).x, (__V).y)
+#define gs_v4_xyz_s(__XYZ, __S) gs_vec4_ctor((__XYZ).x, (__XYZ).y, (__XYZ).z, (__S))
 
 #define GS_XAXIS    gs_v3(1.f, 0.f, 0.f)
 #define GS_YAXIS    gs_v3(0.f, 1.f, 0.f)
@@ -2768,11 +2804,44 @@ gs_vec3_same_dir(gs_vec3 v0, gs_vec3 v1)
     return (gs_vec3_dot(v0, v1) > 0.f);
 }
 
+gs_inline gs_vec3 
+gs_vec3_sign(gs_vec3 v)
+{
+    return (gs_vec3_ctor(
+        v.x < 0.f ? -1.f : v.x > 0.f ? 1.f : 0.f,
+        v.y < 0.f ? -1.f : v.y > 0.f ? 1.f : 0.f,
+        v.z < 0.f ? -1.f : v.z > 0.f ? 1.f : 0.f
+    ));
+}
+
+gs_inline float 
+gs_vec3_signX(gs_vec3 v)
+{
+    return (v.x < 0.f ? -1.f : v.x > 0.f ? 1.f : 0.f);
+}
+
+gs_inline float 
+gs_vec3_signY(gs_vec3 v)
+{
+    return (v.y < 0.f ? -1.f : v.y > 0.f ? 1.f : 0.f);
+}
+
+gs_inline float 
+gs_vec3_signZ(gs_vec3 v)
+{
+    return (v.z < 0.f ? -1.f : v.z > 0.f ? 1.f : 0.f);
+}
 
 gs_inline f32 
 gs_vec3_len(gs_vec3 v)
 {
     return (f32)sqrt(gs_vec3_dot(v, v));
+}
+
+gs_inline f32 
+gs_vec3_len2(gs_vec3 v)
+{
+    return (f32)(gs_vec3_dot(v, v));
 }
 
 gs_inline gs_vec3
@@ -2829,6 +2898,11 @@ gs_inline float gs_vec3_angle_between(gs_vec3 v0, gs_vec3 v1)
 gs_inline float gs_vec3_angle_between_signed(gs_vec3 v0, gs_vec3 v1)
 {
     return asinf(gs_vec3_len(gs_vec3_cross(v0, v1)));
+}
+
+gs_inline gs_vec3 gs_vec3_triple_cross_product(gs_vec3 a, gs_vec3 b, gs_vec3 c)
+{
+    return gs_vec3_sub((gs_vec3_scale(b, gs_vec3_dot(c, a))), (gs_vec3_scale(a, gs_vec3_dot(c, b))));
 }
 
 /*================================================================================
@@ -2936,6 +3010,12 @@ gs_inline
 gs_vec3 gs_v4_to_v3(gs_vec4 v) 
 {
     return gs_v3(v.x, v.y, v.z);
+}
+
+gs_inline
+gs_vec2 gs_v3_to_v2(gs_vec3 v) 
+{
+    return gs_v2(v.x, v.y);
 }
 
 /*================================================================================
@@ -3052,11 +3132,11 @@ gs_mat3_inverse(gs_mat3 m)
 {
     gs_mat3 r = gs_default_val();
 
-    float det = m.m[0 * 3 + 0] * (m.m[1 * 3 + 1] * m.m[2 * 3 + 2] - m.m[2 * 3 + 1] * m.m[1 * 3 + 2]) -
+    double det = (double)(m.m[0 * 3 + 0] * (m.m[1 * 3 + 1] * m.m[2 * 3 + 2] - m.m[2 * 3 + 1] * m.m[1 * 3 + 2]) -
                 m.m[0 * 3 + 1] * (m.m[1 * 3 + 0] * m.m[2 * 3 + 2] - m.m[1 * 3 + 2] * m.m[2 * 3 + 0]) +
-                m.m[0 * 3 + 2] * (m.m[1 * 3 + 0] * m.m[2 * 3 + 1] - m.m[1 * 3 + 1] * m.m[2 * 3 + 0]); 
+                m.m[0 * 3 + 2] * (m.m[1 * 3 + 0] * m.m[2 * 3 + 1] - m.m[1 * 3 + 1] * m.m[2 * 3 + 0]));
 
-    float inv_det = det ? 1.f / det : 0.f;
+    double inv_det = det ? 1.0 / det : 0.0;
 
     r.m[0 * 3 + 0] = (m.m[1 * 3 + 1] * m.m[2 * 3 + 2] - m.m[2 * 3 + 1] * m.m[1 * 3 + 2]) * inv_det;
     r.m[0 * 3 + 1] = (m.m[0 * 3 + 2] * m.m[2 * 3 + 1] - m.m[0 * 3 + 1] * m.m[2 * 3 + 2]) * inv_det;
@@ -3462,17 +3542,6 @@ gs_mat4_look_at(gs_vec3 position, gs_vec3 target, gs_vec3 up)
 }
 
 gs_inline
-gs_vec3 gs_mat4_mul_vec3(gs_mat4 m, gs_vec3 v)
-{
-    return gs_vec3_ctor
-    (
-        m.elements[0 + 4 * 0] * v.x + m.elements[0 + 4 * 1] * v.y + m.elements[0 + 4 * 2] * v.z,  
-        m.elements[1 + 4 * 0] * v.x + m.elements[1 + 4 * 1] * v.y + m.elements[1 + 4 * 2] * v.z,  
-        m.elements[2 + 4 * 0] * v.x + m.elements[2 + 4 * 1] * v.y + m.elements[2 + 4 * 2] * v.z
-    );
-}
-    
-gs_inline
 gs_vec4 gs_mat4_mul_vec4(gs_mat4 m, gs_vec4 v)
 {
     return gs_vec4_ctor
@@ -3483,6 +3552,20 @@ gs_vec4 gs_mat4_mul_vec4(gs_mat4 m, gs_vec4 v)
         m.elements[3 + 4 * 0] * v.x + m.elements[3 + 4 * 1] * v.y + m.elements[3 + 4 * 2] * v.z + m.elements[3 + 4 * 3] * v.w
     );
 }
+
+gs_inline
+gs_vec3 gs_mat4_mul_vec3(gs_mat4 m, gs_vec3 v)
+{
+    return gs_v4_to_v3(gs_mat4_mul_vec4(m, gs_v4_xyz_s(v, 1.f)));
+    // return gs_v4_to_v3(v4);
+    // return gs_vec3_ctor
+    // (
+    //     m.elements[0 + 4 * 0] * v.x + m.elements[0 + 4 * 1] * v.y + m.elements[0 + 4 * 2] * v.z,  
+    //     m.elements[1 + 4 * 0] * v.x + m.elements[1 + 4 * 1] * v.y + m.elements[1 + 4 * 2] * v.z,  
+    //     m.elements[2 + 4 * 0] * v.x + m.elements[2 + 4 * 1] * v.y + m.elements[2 + 4 * 2] * v.z
+    // );
+}
+    
 
 /*================================================================================
 // Quaternion
@@ -3810,6 +3893,10 @@ gs_vqs gs_vqs_default()
 // AbsTrans = ParentPos + [ParentRot * (ParentScale * LocalPos)]
 gs_inline gs_vqs gs_vqs_absolute_transform(const gs_vqs* local, const gs_vqs* parent)
 {
+    if (!local || !parent) {
+        return gs_vqs_default();
+    }
+
     // Normalized rotations
     gs_quat p_rot_norm = gs_quat_norm(parent->rotation);
     gs_quat l_rot_norm = gs_quat_norm(local->rotation);
@@ -3829,6 +3916,10 @@ gs_inline gs_vqs gs_vqs_absolute_transform(const gs_vqs* local, const gs_vqs* pa
 // RelTrans = [Inverse(ParentRot) * (AbsPos - ParentPosition)] / ParentScale;
 gs_inline gs_vqs gs_vqs_relative_transform(const gs_vqs* absolute, const gs_vqs* parent)
 {
+    if (!absolute || !parent) {
+        return gs_vqs_default();
+    }
+
     // Get inverse rotation normalized
     gs_quat p_rot_inv = gs_quat_norm(gs_quat_inverse(parent->rotation));
     // Normalized abs rotation
@@ -6890,11 +6981,11 @@ gs_engine_t* gs_engine_create(gs_app_desc_t app_desc)
         // Set frame rate for application
         gs_engine_subsystem(platform)->time.max_fps = app_desc.frame_rate;
 
-        // Construct main window
-        gs_platform_create_window(app_desc.window_title, app_desc.window_width, app_desc.window_height);
-        
         // Set vsync for video
         gs_platform_enable_vsync(app_desc.enable_vsync);
+
+        // Construct main window
+        gs_platform_create_window(app_desc.window_title, app_desc.window_width, app_desc.window_height);
 
         // Construct graphics api 
         gs_engine_subsystem(graphics) = gs_graphics_create();

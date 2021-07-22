@@ -13,6 +13,13 @@
 #define PLAYER_SHOOT_TIMER	0.25f
 #define PLAYER_MAX_HP	10
 
+#define PLAYER_BASE_PROJECTILE_LIFETIME 0.5f
+#define PLAYER_BASE_PROJECITLE_SPEED	200.f
+#define PLAYER_BASE_PROJECTILE_ACCELL 100.f
+#define PLAYER_BASE_EXPLOSION_RADIUS 2
+#define PLAYER_BASE_SHOOT_DELAY 0.3f
+#define PLAYER_BASE_DMG 1
+
 #define WORM_MAX_VELOCITY	200.f
 #define WORM_MAX_FORCE		6.f
 #define WORM_MAX_SPEED		150.f
@@ -52,17 +59,6 @@ typedef struct tile_t
 	float destruction_value;
 } tile_t;
 
-/*
-typedef struct entity_t
-{
-	int hp;
-	int radius;
-	bool dead;
-	float dead_timer;
-	gs_vec2 position;
-	gs_vec2 velocity;
-} entity_t;
-*/
 
 typedef enum entity_type_t
 {
@@ -72,16 +68,6 @@ typedef enum entity_type_t
 	ENTITY_TYPE_ORB
 } entity_type_t;
 
-
-
-
-/*
-typedef struct player_t
-{
-	entity_t entity;
-	float shoot_time;
-} player_t;
-*/
 
 typedef struct powerup_t
 {
@@ -139,14 +125,7 @@ typedef struct particle_emitter_desc_t
 	bool explode;
 	bool one_shot;
 } particle_emitter_desc_t;
-/*
-typedef struct worm_t
-{
-	entity_t entity;
-	struct worm_t* segment;
-	particle_emitter_t* particle_emitter;
-} worm_t;
-*/
+
 typedef struct projectile_t
 {
 	gs_vec2 position;
@@ -156,6 +135,8 @@ typedef struct projectile_t
 	float life_time;
 	float max_life_time;
 	int dmg;
+	int explode_radius;
+	entity_t* entity_ignore;
 	particle_emitter_t* particle_emitter;
 	bool enemy_created;
 	bool go_through_walls;
@@ -195,6 +176,7 @@ typedef struct entity_t
 {
 	entity_type_t type;
 	int hp;
+	int dmg;
 	float radius;
 	bool dead;
 	float dead_timer;
@@ -210,6 +192,13 @@ typedef struct entity_t
 		struct // player
 		{
 			float player_shoot_time; 
+			float player_projectile_lifetime;
+			float player_projectile_speed;
+			float player_projectile_accel;
+			int player_explosion_radius;
+			float player_shoot_delay;
+			float player_projectile_reflect_chance;
+			
 			particle_emitter_t* player_particle_emitter;
 			// går inte ha samma namn i olika strucs i unions. Obviously men kanske ha name_varname före alla?
 		};
@@ -335,6 +324,8 @@ typedef struct game_data_t
 	struct shop_t shop;
 
 	int wave;
+	bool mute;
+	float volume;
 
 } game_data_t;
 

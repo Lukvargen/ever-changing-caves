@@ -44,11 +44,6 @@
 
 /*==== Interface ====*/
 
-/** @defgroup gs_immediate_draw_util Immediate Draw Util
- *  Gunslinger Immediate Draw Util
- *  @{
- */
-
 gs_enum_decl(gsi_matrix_type,
 	GSI_MATRIX_MODELVIEW,
 	GSI_MATRIX_PROJECTION
@@ -187,10 +182,12 @@ GS_API_DECL void gsi_triangle(gs_immediate_draw_t* gsi, float x0, float y0, floa
 GS_API_DECL void gsi_trianglev(gs_immediate_draw_t* gsi, gs_vec2 a, gs_vec2 b, gs_vec2 c, gs_color_t color, gs_graphics_primitive_type type);
 GS_API_DECL void gsi_trianglex(gs_immediate_draw_t* gsi, float x0, float y0, float z0, float x1, float y1, float z1, float x2, float y2, float z2, float u0, float v0, float u1, float v1, float u2, float v2, uint8_t r, uint8_t g, uint8_t b, uint8_t a, gs_graphics_primitive_type type);
 GS_API_DECL void gsi_trianglevx(gs_immediate_draw_t* gsi, gs_vec3 v0, gs_vec3 v1, gs_vec3 v2, gs_vec2 uv0, gs_vec2 uv1, gs_vec2 uv2, gs_color_t color, gs_graphics_primitive_type type);
+GS_API_DECL void gsi_trianglevxmc(gs_immediate_draw_t* gsi, gs_vec3 v0, gs_vec3 v1, gs_vec3 v2, gs_vec2 uv0, gs_vec2 uv1, gs_vec2 uv2, gs_color_t c0, gs_color_t c1, gs_color_t c2, gs_graphics_primitive_type type);
 GS_API_DECL void gsi_line(gs_immediate_draw_t* gsi, float x0, float y0, float x1, float y1, uint8_t r, uint8_t g, uint8_t b, uint8_t a);
 GS_API_DECL void gsi_linev(gs_immediate_draw_t* gsi, gs_vec2 v0, gs_vec2 v1, gs_color_t c);
 GS_API_DECL void gsi_line3D(gs_immediate_draw_t* gsi, float x0, float y0, float z0, float x1, float y1, float z1, uint8_t r, uint8_t g, uint8_t b, uint8_t a);
 GS_API_DECL void gsi_line3Dv(gs_immediate_draw_t* gsi, gs_vec3 s, gs_vec3 e, gs_color_t color);
+GS_API_DECL void gsi_line3Dmc(gs_immediate_draw_t* gsi, float x0, float y0, float z0, float x1, float y1, float z1, uint8_t r0, uint8_t g0, uint8_t b0, uint8_t a0, uint8_t r1, uint8_t g1, uint8_t b1, uint8_t a1);
 
 // Shape Drawing Util
 GS_API_DECL void gsi_rect(gs_immediate_draw_t* gsi, float x0, float y0, float x1, float y1, uint8_t r, uint8_t g, uint8_t b, uint8_t a, gs_graphics_primitive_type type);
@@ -198,11 +195,16 @@ GS_API_DECL void gsi_rectv(gs_immediate_draw_t* gsi, gs_vec2 bl, gs_vec2 tr, gs_
 GS_API_DECL void gsi_rectx(gs_immediate_draw_t* gsi, float l, float b, float r, float t, float u0, float v0, float u1, float v1, uint8_t _r, uint8_t _g, uint8_t _b, uint8_t _a, gs_graphics_primitive_type type);
 GS_API_DECL void gsi_rectvx(gs_immediate_draw_t* gsi, gs_vec2 bl, gs_vec2 tr, gs_vec2 uv0, gs_vec2 uv1, gs_color_t color, gs_graphics_primitive_type type);
 GS_API_DECL void gsi_rectvd(gs_immediate_draw_t* gsi, gs_vec2 xy, gs_vec2 wh, gs_vec2 uv0, gs_vec2 uv1, gs_color_t color, gs_graphics_primitive_type type);
+GS_API_DECL void gsi_rect3Dv(gs_immediate_draw_t* gsi, gs_vec3 min, gs_vec3 max, gs_vec2 uv0, gs_vec2 uv1, gs_color_t color, gs_graphics_primitive_type type);
 GS_API_DECL void gsi_circle(gs_immediate_draw_t* gsi, float cx, float cy, float radius, int32_t segments, uint8_t r, uint8_t g, uint8_t b, uint8_t a, gs_graphics_primitive_type type);
+GS_API_DECL void gsi_circlevx(gs_immediate_draw_t* gsi, gs_vec3 c, float radius, int32_t segments, gs_color_t color, gs_graphics_primitive_type type);
 GS_API_DECL void gsi_circle_sector(gs_immediate_draw_t* gsi, float cx, float cy, float radius, int32_t start_angle, int32_t end_angle, int32_t segments, uint8_t r, uint8_t g, uint8_t b, uint8_t a, gs_graphics_primitive_type type);
+GS_API_DECL void gsi_circle_sectorvx(gs_immediate_draw_t* gsi, gs_vec3 c, float radius, int32_t start_angle, int32_t end_angle, int32_t segments, gs_color_t color, gs_graphics_primitive_type type);
 GS_API_DECL void gsi_box(gs_immediate_draw_t* gsi, float x0, float y0, float z0, float hx, float hy, float hz, uint8_t r, uint8_t g, uint8_t b, uint8_t a, gs_graphics_primitive_type type);
 GS_API_DECL void gsi_sphere(gs_immediate_draw_t* gsi, float cx, float cy, float cz, float radius, uint8_t r, uint8_t g, uint8_t b, uint8_t a, gs_graphics_primitive_type type);
 GS_API_DECL void gsi_bezier(gs_immediate_draw_t* gsi, float x0, float y0, float x1, float y1, uint8_t r, uint8_t g, uint8_t b, uint8_t a);
+GS_API_DECL void gsi_cylinder(gs_immediate_draw_t* gsi, float x, float y, float z, float r_top, float r_bottom, float height, int32_t sides, uint8_t r, uint8_t g, uint8_t b, uint8_t a, gs_graphics_primitive_type type);
+GS_API_DECL void gsi_cone(gs_immediate_draw_t* gsi, float x, float y, float z, float radius, float height, int32_t sides, uint8_t r, uint8_t g, uint8_t b, uint8_t a, gs_graphics_primitive_type type);
 
 // Draw planes/poly groups
 
@@ -215,8 +217,6 @@ GS_API_DECL void GSDecode85(const unsigned char* src, unsigned char* dst);
 GS_API_DECL unsigned int GSDecode85Byte(char c);
 GS_API_DECL unsigned int gs_decompress_length(const unsigned char* input);
 GS_API_DECL unsigned int gs_decompress(unsigned char* output, unsigned char* input, unsigned int length);
-
-/** @} */ // end of gs_immediate_draw_util
 
 /*==== Implementation ====*/
 
@@ -905,6 +905,70 @@ void gsi_trianglevx(gs_immediate_draw_t* gsi, gs_vec3 v0, gs_vec3 v1, gs_vec3 v2
 		v2.y, v2.z, uv0.x, uv0.y, uv1.x, uv1.y, uv2.x, uv2.y, color.r, color.g, color.b, color.a, type);
 }
 
+GS_API_DECL void gsi_trianglevxmc(
+	gs_immediate_draw_t* gsi, 
+	gs_vec3 v0, gs_vec3 v1, gs_vec3 v2, 
+	gs_vec2 uv0, gs_vec2 uv1, gs_vec2 uv2, 
+	gs_color_t c0, gs_color_t c1, gs_color_t c2, 
+	gs_graphics_primitive_type type
+)
+{
+	switch (type)
+	{
+		default:
+		case GS_GRAPHICS_PRIMITIVE_TRIANGLES:
+		{
+			gsi_begin(gsi, GS_GRAPHICS_PRIMITIVE_TRIANGLES);
+
+				// First vert
+				gsi_c4ub(gsi, c0.r, c0.g, c0.b, c0.a);
+				gsi_tc2f(gsi, uv0.x, uv0.y);
+				gsi_v3f(gsi, v0.x, v0.y, v0.z);
+
+				// Second vert
+				gsi_c4ub(gsi, c1.r, c1.g, c1.b, c1.a);
+				gsi_tc2f(gsi, uv1.x, uv1.y);
+				gsi_v3f(gsi, v1.x, v1.y, v1.z);
+
+				// Third vert
+				gsi_c4ub(gsi, c2.r, c2.g, c2.b, c2.a);
+				gsi_tc2f(gsi, uv2.x, uv2.y);
+				gsi_v3f(gsi, v2.x, v2.y, v2.z);
+				
+			gsi_end(gsi);
+		} break;
+
+		case GS_GRAPHICS_PRIMITIVE_LINES:
+		{
+			gsi_line3Dmc(gsi, v0.x, v0.y, v0.z, v1.x, v1.y, v1.z, c0.r, c0.g, c0.b, c0.a, c1.r, c1.g, c1.b, c1.a);
+			gsi_line3Dmc(gsi, v1.x, v1.y, v1.z, v2.x, v2.y, v2.z, c1.r, c1.g, c1.b, c1.a, c2.r, c2.g, c2.b, c2.a);
+			gsi_line3Dmc(gsi, v2.x, v2.y, v2.z, v0.x, v0.y, v0.z, c2.r, c2.g, c2.b, c2.a, c0.r, c0.g, c0.b, c0.a);
+		} break;
+	}
+}
+
+void gsi_line3Dmc(
+	gs_immediate_draw_t* gsi, 
+	float x0, float y0, float z0, 
+	float x1, float y1, float z1, 
+	uint8_t r0, uint8_t g0, uint8_t b0, uint8_t a0, 
+	uint8_t r1, uint8_t g1, uint8_t b1, uint8_t a1 
+)
+{
+	gsi_begin(gsi, GS_GRAPHICS_PRIMITIVE_LINES);
+
+		gsi_tc2f(gsi, 0.f, 0.f);
+
+		// First vert
+		gsi_c4ub(gsi, r0, g0, b0, a0);
+		gsi_v3f(gsi, x0, y0, z0);
+
+		// Second vert
+		gsi_c4ub(gsi, r1, g1, b1, a1);
+		gsi_v3f(gsi, x1, y1, z1);
+	gsi_end(gsi);
+}
+
 void gsi_line3D(gs_immediate_draw_t* gsi, float x0, float y0, float z0, float x1, float y1, float z1, uint8_t r, uint8_t g, uint8_t b, uint8_t a)
 {
 	gsi_begin(gsi, GS_GRAPHICS_PRIMITIVE_LINES);
@@ -989,6 +1053,50 @@ void gsi_rectvd(gs_immediate_draw_t* gsi, gs_vec2 xy, gs_vec2 wh, gs_vec2 uv0, g
 	gsi_rectx(gsi, xy.x, xy.y, xy.x + wh.x, xy.y + wh.y, uv0.x, uv0.y, uv1.x, uv1.y, color.r, color.g, color.b, color.a, type);
 }
 
+GS_API_DECL void gsi_rect3Dv(gs_immediate_draw_t* gsi, gs_vec3 min, gs_vec3 max, gs_vec2 uv0, gs_vec2 uv1, gs_color_t c, gs_graphics_primitive_type type)
+{
+	const gs_vec3 vt0 = min;
+	const gs_vec3 vt1 = gs_v3(min.x, max.y, min.z);
+	const gs_vec3 vt2 = gs_v3(max.x, min.y, max.z);
+	const gs_vec3 vt3 = max;
+
+	switch (type)
+	{
+		case GS_GRAPHICS_PRIMITIVE_LINES:
+		{
+			gsi_line3Dv(gsi, vt0, vt1, c);
+			gsi_line3Dv(gsi, vt1, vt2, c);
+			gsi_line3Dv(gsi, vt2, vt3, c);
+			gsi_line3Dv(gsi, vt3, vt0, c);
+		} break;
+
+		case GS_GRAPHICS_PRIMITIVE_TRIANGLES:
+		{
+			gsi_begin(gsi, GS_GRAPHICS_PRIMITIVE_TRIANGLES);
+
+				gsi_c4ub(gsi, c.r, c.g, c.b, c.a);
+
+				const float u0 = uv0.x;
+				const float u1 = uv1.x;
+				const float v0 = uv0.y;
+				const float v1 = uv1.y;
+
+				// First triangle
+				gsi_tc2f(gsi, u0, v0); gsi_v3fv(gsi, vt0);
+				gsi_tc2f(gsi, u1, v0); gsi_v3fv(gsi, vt3);
+				gsi_tc2f(gsi, u0, v1); gsi_v3fv(gsi, vt1);
+
+				// Second triangle
+				gsi_tc2f(gsi, u1, v0); gsi_v3fv(gsi, vt0);
+				gsi_tc2f(gsi, u1, v1); gsi_v3fv(gsi, vt2);
+				gsi_tc2f(gsi, u0, v1); gsi_v3fv(gsi, vt3);
+				
+			gsi_end(gsi);
+
+		} break;
+	}
+}
+
 void gsi_circle_sector(gs_immediate_draw_t* gsi, float cx, float cy, float radius, int32_t start_angle, 
 	int32_t end_angle, int32_t segments, uint8_t r, uint8_t g, uint8_t b, uint8_t a, gs_graphics_primitive_type type)
 {
@@ -1025,9 +1133,53 @@ void gsi_circle_sector(gs_immediate_draw_t* gsi, float cx, float cy, float radiu
     }
 }
 
+void gsi_circle_sectorvx(gs_immediate_draw_t* gsi, gs_vec3 c, float radius, int32_t start_angle, 
+	int32_t end_angle, int32_t segments, gs_color_t color, gs_graphics_primitive_type type)
+{
+    if (radius <= 0.0f) {
+    	radius = 0.1f;
+    }
+
+    // Cache elements of center vector
+    float cx = c.x, cy = c.y, cz = c.z;
+
+    // Function expects (end_angle > start_angle)
+    if (end_angle < start_angle) {
+        // Swap values
+        int32_t tmp = start_angle;
+        start_angle = end_angle;
+        end_angle = tmp;
+    }
+
+    if (segments < 4) {
+        // Calculate the maximum angle between segments based on the error rate (usually 0.5f)
+        float th = acosf(2*powf(1 - gsi_smooth_circle_error_rate/radius, 2) - 1);
+        segments = (int32_t)((end_angle - start_angle)*ceilf(2*GS_PI/th)/360);
+        if (segments <= 0) {
+        	segments = 4;
+        }
+    }
+
+    float step = (float)(end_angle - start_angle)/(float)segments;
+    float angle = (float)start_angle;
+	gs_for_range_i(segments)
+    {
+        gs_vec3 _a = gs_v3(cx, cy, cz);
+        gs_vec3 _b = gs_v3(cx + sinf(gsi_deg2rad*angle)*radius, cy + cosf(gsi_deg2rad*angle)*radius, cz);
+        gs_vec3 _c = gs_v3(cx + sinf(gsi_deg2rad*(angle + step))*radius, cy + cosf(gsi_deg2rad*(angle + step))*radius, cz);
+		gsi_trianglevx(gsi, _a, _b, _c, gs_v2s(0.f), gs_v2s(0.5f), gs_v2s(1.f), color, type);
+        angle += step;
+    }
+}
+
 void gsi_circle(gs_immediate_draw_t* gsi, float cx, float cy, float radius, int32_t segments, uint8_t r, uint8_t g, uint8_t b, uint8_t a, gs_graphics_primitive_type type)
 {
 	gsi_circle_sector(gsi, cx, cy, radius, 0, 360, segments, r, g, b, a, type);	
+}
+
+void gsi_circlevx(gs_immediate_draw_t* gsi, gs_vec3 c, float radius, int32_t segments, gs_color_t color, gs_graphics_primitive_type type)
+{
+	gsi_circle_sectorvx(gsi, c, radius, 0, 360, segments, color, type);
 }
 
 void gsi_box(gs_immediate_draw_t* gsi, float x, float y, float z, float hx, float hy, float hz, 
@@ -1211,6 +1363,115 @@ void gsi_bezier(gs_immediate_draw_t* gsi, float x0, float y0, float x1, float y1
         gsi_linev(gsi, previous, current, color);
         previous = current;
     }	
+}
+
+GS_API_DECL void gsi_cylinder(gs_immediate_draw_t* gsi, float x, float y, float z, float r_top, 
+	float r_bottom, float height, int32_t sides, uint8_t r, uint8_t g, uint8_t b, uint8_t a, gs_graphics_primitive_type type)
+{
+    if (sides < 3) sides = 3;
+
+    int32_t numVertex = sides * 8;
+    const float hh = height * 0.5f;
+
+    switch (type)
+    {
+    	default:
+    	case GS_GRAPHICS_PRIMITIVE_TRIANGLES:
+    	{
+    		gsi_begin(gsi, GS_GRAPHICS_PRIMITIVE_TRIANGLES);
+    		{
+				gsi_c4ub(gsi, r, g, b, a);
+
+				if (sides < 3) sides = 3;
+
+			    numVertex = sides * 6;
+
+	            if (r_top > 0)
+	            {
+	                // Draw Body -------------------------------------------------------------------------------------
+	                for (int i = 0; i < 360; i += 360/sides)
+	                {
+	                    gsi_v3f(gsi, x + sinf(gsi_deg2rad*i)*r_bottom, y - hh, z + cosf(gsi_deg2rad*i)*r_bottom); //Bottom Left
+	                    gsi_v3f(gsi, x + sinf(gsi_deg2rad*(i + 360.0f/sides))*r_bottom, y - hh, z + cosf(gsi_deg2rad*(i + 360.0f/sides))*r_bottom); //Bottom Right
+	                    gsi_v3f(gsi, x + sinf(gsi_deg2rad*(i + 360.0f/sides))*r_top, y + hh, z + cosf(gsi_deg2rad*(i + 360.0f/sides))*r_top); //Top Right
+
+	                    gsi_v3f(gsi, x + sinf(gsi_deg2rad*i)*r_top, y + hh, z + cosf(gsi_deg2rad*i)*r_top); //Top Left
+	                    gsi_v3f(gsi, x + sinf(gsi_deg2rad*i)*r_bottom, y - hh, z + cosf(gsi_deg2rad*i)*r_bottom); //Bottom Left
+	                    gsi_v3f(gsi, x + sinf(gsi_deg2rad*(i + 360.0f/sides))*r_top, y + hh, z + cosf(gsi_deg2rad*(i + 360.0f/sides))*r_top); //Top Right
+	                }
+
+	                // Draw Cap --------------------------------------------------------------------------------------
+	                for (int i = 0; i < 360; i += 360/sides)
+	                {
+	                    gsi_v3f(gsi, x + 0, y + hh, z + 0);
+	                    gsi_v3f(gsi, x + sinf(gsi_deg2rad*i)*r_top, y + hh, z + cosf(gsi_deg2rad*i)*r_top);
+	                    gsi_v3f(gsi, x + sinf(gsi_deg2rad*(i + 360.0f/sides))*r_top, y + hh, z + cosf(gsi_deg2rad*(i + 360.0f/sides))*r_top);
+	                }
+	            }
+	            else
+	            {
+	                // Draw Cone -------------------------------------------------------------------------------------
+	                for (int i = 0; i < 360; i += 360/sides)
+	                {
+	                    gsi_v3f(gsi, x + 0, y + hh, z + 0);
+	                    gsi_v3f(gsi, x + sinf(gsi_deg2rad*i)*r_bottom, y - hh, z + cosf(gsi_deg2rad*i)*r_bottom);
+	                    gsi_v3f(gsi, x + sinf(gsi_deg2rad*(i + 360.0f/sides))*r_bottom, y - hh, z + cosf(gsi_deg2rad*(i + 360.0f/sides))*r_bottom);
+	                }
+	            }
+
+	            // Draw Base -----------------------------------------------------------------------------------------
+	            for (int i = 0; i < 360; i += 360/sides)
+	            {
+	                gsi_v3f(gsi, x + 0, y - hh, z + 0);
+	                gsi_v3f(gsi, x + sinf(gsi_deg2rad*(i + 360.0f/sides))*r_bottom, y - hh, z + cosf(gsi_deg2rad*(i + 360.0f/sides))*r_bottom);
+	                gsi_v3f(gsi, x + sinf(gsi_deg2rad*i)*r_bottom, y - hh, z + cosf(gsi_deg2rad*i)*r_bottom);
+	            }
+    		}
+    		gsi_end(gsi);
+    	} break;
+
+    	case GS_GRAPHICS_PRIMITIVE_LINES: 
+    	{
+    		gsi_begin(gsi, GS_GRAPHICS_PRIMITIVE_LINES);
+    		{
+				gsi_c4ub(gsi, r, g, b, a);
+
+	            for (int32_t i = 0; i < 360; i += 360/sides)
+	            {
+	                gsi_v3f(gsi, x + sinf(gsi_deg2rad*i)*r_bottom, y - hh, cosf(gsi_deg2rad*i)*r_bottom);
+	                gsi_v3f(gsi, x + sinf(gsi_deg2rad*(i + 360.0f/sides))*r_bottom, y - hh, z + cosf(gsi_deg2rad*(i + 360.0f/sides))*r_bottom);
+
+	                gsi_v3f(gsi, x + sinf(gsi_deg2rad*(i + 360.0f/sides))*r_bottom, y - hh, z + cosf(gsi_deg2rad*(i + 360.0f/sides))*r_bottom);
+	                gsi_v3f(gsi, x + sinf(gsi_deg2rad*(i + 360.0f/sides))*r_top, y + hh, z + cosf(gsi_deg2rad*(i + 360.0f/sides))*r_top);
+
+	                gsi_v3f(gsi, x + sinf(gsi_deg2rad*(i + 360.0f/sides))*r_top, y + hh, z + cosf(gsi_deg2rad*(i + 360.0f/sides))*r_top);
+	                gsi_v3f(gsi, x + sinf(gsi_deg2rad*i)*r_top, y + hh, z + cosf(gsi_deg2rad*i)*r_top);
+
+	                gsi_v3f(gsi, x + sinf(gsi_deg2rad*i)*r_top, y + hh, z + cosf(gsi_deg2rad*i)*r_top);
+	                gsi_v3f(gsi, x + sinf(gsi_deg2rad*i)*r_bottom, y - hh, z + cosf(gsi_deg2rad*i)*r_bottom);
+	            }
+
+	            // Draw Top/Bottom circles
+	            for (int i = 0; i < 360; i += 360/sides)
+	            {
+	                gsi_v3f(gsi, x, y - hh, z);
+	                gsi_v3f(gsi, x + sinf(gsi_deg2rad*(i + 360.0f/sides))*r_bottom, y - hh, z + cosf(gsi_deg2rad*(i + 360.0f/sides))*r_bottom);
+
+	                if (r_top) {
+		                gsi_v3f(gsi, x + 0, y + hh, z + 0);
+		                gsi_v3f(gsi, x + sinf(gsi_deg2rad*(i + 360.0f/sides))*r_top, y + hh, z + cosf(gsi_deg2rad*(i + 360.0f/sides))*r_top);
+	                }
+	            }
+    		}
+    		gsi_end(gsi);
+
+    	} break;
+    }
+}
+
+GS_API_DECL void gsi_cone(gs_immediate_draw_t* gsi, float x, float y, float z, float radius, float height, int32_t sides, uint8_t r, uint8_t g, uint8_t b, uint8_t a, gs_graphics_primitive_type type)
+{
+	gsi_cylinder(gsi, x, y, z, 0.f, radius, height, sides, r, g, b, a, type);
 }
 
 void gsi_text(gs_immediate_draw_t* gsi, float x, float y, const char* text, const gs_asset_font_t* fp, bool32_t flip_vertical, uint8_t r, uint8_t g, uint8_t b, uint8_t a)

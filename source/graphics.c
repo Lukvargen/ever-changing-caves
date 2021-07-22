@@ -111,25 +111,45 @@ void draw_game(game_data_t* gd)
 	if (gd->shop.visible) {
 		int center_x = RESOLUTION_X / 2;
 		int center_y = RESOLUTION_Y / 2;
-		int upgrade_panel_size_x = 300;
+		int upgrade_panel_size_x = RESOLUTION_X/4;
 		int upgrade_panel_size_y = 25;
 		int upgrade_btn_size_x = 50;
 		int upgrade_btn_size_y = 25;
 		//int upgrade_panel_x = center_x
 		
 		// gsi_text(gsi, 50, 300, "some\ntext", &font_small, false, 200, 200, 200, 255);
-		gs_vec2 panel_pos = gs_v2(RESOLUTION_X/3, 150);
+		gs_vec2 panel_pos = gs_v2(upgrade_panel_size_x / 2 - 10, 150);
 		for (int i = 0; i < SHOP_UPGRADES_SIZE; i++) {
+
 			#define TEXT_SIZE 128
 			char text[TEXT_SIZE];
 			text[0] = '\0';
 			upgrade_t* upgrade = &gd->shop.upgrades_available[i];
+			bool visible = true;
+			
 
 			
 			switch(upgrade->type) {
 				case (UPGRADE_TYPE_DMG):
-					#define DMG_INCREASE 1
-					gs_snprintf(text, TEXT_SIZE, "DMG+%i (%i->%i)", DMG_INCREASE, 1, 2);
+					gs_snprintf(text, TEXT_SIZE, "DMG+%i\n(%i->%i)", upgrade->ivalue, gd->player.dmg, gd->player.dmg + upgrade->ivalue);
+					break;
+				case (UPGRADE_TYPE_LIFETIME):
+					gs_snprintf(text, TEXT_SIZE, "P LIFETIME+%.1f\n(%.1f->%.1f)", upgrade->fvalue, gd->player.player_projectile_lifetime, gd->player.player_projectile_lifetime + upgrade->fvalue);
+					break;
+				case (UPGRADE_TYPE_SPEED):
+					gs_snprintf(text, TEXT_SIZE, "P SPEED+%.0f\n(%.0f->%.0f)", upgrade->fvalue, gd->player.player_projectile_speed, gd->player.player_projectile_speed + upgrade->fvalue);
+					break;
+				case (UPGRADE_TYPE_ACCELL):
+					gs_snprintf(text, TEXT_SIZE, "P ACCEL+%.0f\n(%.0f->%.0f)", upgrade->fvalue, gd->player.player_projectile_accel, gd->player.player_projectile_accel + upgrade->fvalue);
+					break;
+				case (UPGRADE_TYPE_EXPLODE):
+					gs_snprintf(text, TEXT_SIZE, "P EXPLODE+%i\n(%i->%i)", upgrade->ivalue, gd->player.player_explosion_radius, gd->player.player_explosion_radius + upgrade->ivalue);
+					break;
+				case (UPGRADE_TYPE_SHOOT_DELAY):
+					gs_snprintf(text, TEXT_SIZE, "SHOOT DELAY-%.2f\n(%.2f->%.2f)", upgrade->fvalue, gd->player.player_shoot_delay, gd->player.player_shoot_delay - upgrade->fvalue);
+					break;
+				case (UPGRADE_TYPE_NULL):
+					visible = false;
 					break;
 				default:
 					gs_snprintf(text, TEXT_SIZE, "ERROR");
@@ -138,21 +158,25 @@ void draw_game(game_data_t* gd)
 
 
 			}
+			
+
 			//gs_println("cost: %d", upgrade->cost);
 			gs_snprintfc(cost_text, TEXT_SIZE, "\n \nCost %i", upgrade->cost);
 			strcat(text, cost_text);
 
 			gsi_ortho(gsi, 0, RESOLUTION_X, RESOLUTION_Y, 0, 0, 100);
 			ui_control_t* panel = ui_panel(gsi, &(ui_control_t){
+				.visible = visible,
 				.font = font_small,
 				.color = gs_color(20, 20, 20, 255),
 				.pos = panel_pos,
-				.center_x = true,
+				.center_x = false,
 				.padding = gs_v2(5,5),
 				.text = text,
 				.font_height = 12,
 				.border = true,
 				.border_color = gs_color(200, 200, 200, 255),
+				.size = gs_v2(RESOLUTION_X/4, 0)
 				//.size = gs_v2(100, 100)
 			});
 			panel_pos.x += panel->size.x+10;
@@ -160,6 +184,7 @@ void draw_game(game_data_t* gd)
 			button_pos.x = panel->pos.x + panel->size.x / 2;
 			button_pos.y = panel->pos.y + panel->size.y;
 			if (ui_button(gsi, &(ui_control_t){
+				.visible = visible,
 				.font = font_small,
 				.color = gs_color(60, 20, 20, 255),
 				.pos = button_pos,
@@ -172,18 +197,81 @@ void draw_game(game_data_t* gd)
 			})) {
 				printf("pressed button\n");
 
+				if (gd->crystals_currency >= upgrade->cost) {
+					gd->crystals_currency -= upgrade->cost;
+				} else {
+					continue;
+				}
+
 				switch(upgrade->type) {
 				case (UPGRADE_TYPE_DMG):
 					printf("pressed dmg\n");
-					
+					gd->player.dmg += upgrade->ivalue;
 					break;
+				case (UPGRADE_TYPE_LIFETIME):
+					gd->player.player_projectile_lifetime += upgrade->fvalue;
+					break;
+				case (UPGRADE_TYPE_SPEED):
+					gd->player.player_projectile_speed += upgrade->fvalue;
+					break;
+				case (UPGRADE_TYPE_ACCELL):
+					gd->player.player_projectile_accel += upgrade->fvalue;
+				case (UPGRADE_TYPE_EXPLODE):
+					gd->player.player_projectile_accel += upgrade->ivalue;
+				case (UPGRADE_TYPE_SHOOT_DELAY):
+					gd->player.player_shoot_delay -= upgrade->fvalue;
 				default:
 					break;
+				}
 
-
+				upgrade->type = UPGRADE_TYPE_NULL;
 			}
-			}
+		}
 
+		if (ui_button(gsi, &(ui_control_t){
+			.visible = true,
+			.text = "HEAL\nCOST:100c",
+			.pos = gs_v2(RESOLUTION_X/2 - 50, 100),
+			.size = gs_v2(100, 0),
+			.padding = gs_v2(5,5),
+			.font_height = 12,
+			.font = font_small,
+			.color = gs_color(60, 20, 20, 255),
+			.border = true,
+			.center_x = true,
+			.border_color = gs_color(200, 200, 200, 255)
+		})) {
+			printf("Next Wave!\n");
+		}
+		if (ui_button(gsi, &(ui_control_t){
+			.visible = true,
+			.text = "REROLL\nCOST:100c",
+			.pos = gs_v2(RESOLUTION_X/2 + 50 + 15, 100),
+			.size = gs_v2(100, 0),
+			.padding = gs_v2(5,5),
+			.font_height = 12,
+			.font = font_small,
+			.color = gs_color(60, 20, 20, 255),
+			.border = true,
+			.center_x = true,
+			.border_color = gs_color(200, 200, 200, 255)
+		})) {
+			printf("Next Wave!\n");
+		}
+
+		if (ui_button(gsi, &(ui_control_t){
+			.visible = true,
+			.text = "NEXT WAVE",
+			.pos = gs_v2(RESOLUTION_X/2, 250),
+			.padding = gs_v2(5,5),
+			.font_height = 12,
+			.font = font_small,
+			.color = gs_color(60, 20, 20, 255),
+			.border = true,
+			.center_x = true,
+			.border_color = gs_color(200, 200, 200, 255)
+		})) {
+			printf("Next Wave!\n");
 		}
 	}
 
