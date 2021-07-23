@@ -65,6 +65,11 @@ void shop_init_all_upgrades(game_data_t* gd)
             .fvalue = 0.05
         }, 1);
     }
+    append_all_upgrades(gd, (upgrade_t){
+        .type = UPGRADE_TYPE_SHOOT_REFLECT,
+        .cost = 50,
+        .fvalue = 0.05
+    }, 10);
 }
 
 uint32_t pos_mod(int value, uint32_t m)

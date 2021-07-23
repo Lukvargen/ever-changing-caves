@@ -148,6 +148,9 @@ void draw_game(game_data_t* gd)
 				case (UPGRADE_TYPE_SHOOT_DELAY):
 					gs_snprintf(text, TEXT_SIZE, "SHOOT DELAY-%.2f\n(%.2f->%.2f)", upgrade->fvalue, gd->player.player_shoot_delay, gd->player.player_shoot_delay - upgrade->fvalue);
 					break;
+				case (UPGRADE_TYPE_SHOOT_REFLECT):
+					gs_snprintf(text, TEXT_SIZE, "SHOT REFLECT-%.0f %\n(%.2f->%.2f)", upgrade->fvalue, gd->player.player_projectile_reflect_chance*100, gd->player.player_shoot_delay*100 - upgrade->fvalue*100);
+					break;
 				case (UPGRADE_TYPE_NULL):
 					visible = false;
 					break;
@@ -199,7 +202,9 @@ void draw_game(game_data_t* gd)
 
 				if (gd->crystals_currency >= upgrade->cost) {
 					gd->crystals_currency -= upgrade->cost;
+					gs_audio_play_source(gd->buy_positive_sound_hndl, gd->volume);
 				} else {
+					gs_audio_play_source(gd->buy_negative_sound_hndl, gd->volume);
 					continue;
 				}
 
@@ -216,10 +221,15 @@ void draw_game(game_data_t* gd)
 					break;
 				case (UPGRADE_TYPE_ACCELL):
 					gd->player.player_projectile_accel += upgrade->fvalue;
+					break;
 				case (UPGRADE_TYPE_EXPLODE):
-					gd->player.player_projectile_accel += upgrade->ivalue;
+					gd->player.player_explosion_radius += upgrade->ivalue;
+					break;
 				case (UPGRADE_TYPE_SHOOT_DELAY):
 					gd->player.player_shoot_delay -= upgrade->fvalue;
+					break;
+				case (UPGRADE_TYPE_SHOOT_REFLECT):
+					gd->player.player_projectile_reflect_chance += upgrade->fvalue;
 				default:
 					break;
 				}
@@ -284,8 +294,8 @@ void draw_game(game_data_t* gd)
 		gs_graphics_clear(gcb, &fb_clear);
 		draw_tiles(gd, gcb);
 		draw_particles(gd, gcb);
-		gsi_draw(gsi, gcb);
 		draw_entities(gd, gcb);
+		gsi_draw(gsi, gcb);
 	gs_graphics_end_render_pass(gcb);
 
 

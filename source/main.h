@@ -126,21 +126,7 @@ typedef struct particle_emitter_desc_t
 	bool one_shot;
 } particle_emitter_desc_t;
 
-typedef struct projectile_t
-{
-	gs_vec2 position;
-	gs_vec2 velocity;
-	float accell;
-	float radius;
-	float life_time;
-	float max_life_time;
-	int dmg;
-	int explode_radius;
-	entity_t* entity_ignore;
-	particle_emitter_t* particle_emitter;
-	bool enemy_created;
-	bool go_through_walls;
-} projectile_t;
+
 
 
 
@@ -232,7 +218,21 @@ typedef struct entity_t
 } entity_t;
 
 
-
+typedef struct projectile_t
+{
+	gs_vec2 position;
+	gs_vec2 velocity;
+	float accell;
+	float radius;
+	float life_time;
+	float max_life_time;
+	int dmg;
+	int explode_radius;
+	entity_t* entity_ignore;
+	particle_emitter_t* particle_emitter;
+	bool enemy_created;
+	bool go_through_walls;
+} projectile_t;
 
 
 // TODO
@@ -248,6 +248,14 @@ typedef struct game_data_t
 {
 	gs_command_buffer_t gcb;
 	gs_immediate_draw_t gsi;
+
+	// audio
+	gs_handle(gs_audio_source_t) hit_sound_hndl;
+	gs_handle(gs_audio_source_t) crystal_pickup_sound_hndl;
+	gs_handle(gs_audio_source_t) hit_wall_sound_hndl;
+	gs_handle(gs_audio_source_t) buy_positive_sound_hndl;
+	gs_handle(gs_audio_source_t) buy_negative_sound_hndl;
+
 	entity_t player;
 	gs_dyn_array(projectile_t) projecitles;
 	// tile

@@ -13,8 +13,8 @@
 
 
 
-gs_handle(gs_audio_source_t) hit_sound_hndl = {0};
-gs_handle(gs_audio_instance_t) hit_sound_instance_hndl = {0};
+
+
 
 //float max = 1;
 
@@ -62,14 +62,11 @@ void init()
 {
 	game_data_t* gd = gs_engine_user_data(game_data_t);
 	
-	hit_sound_hndl = gs_audio_load_from_file("./assets/Hit_Hurt2.wav");
-
-	gs_audio_t* audio = gs_engine_subsystem(audio);
-    gs_audio_instance_decl_t decl = gs_default_val();
-    decl.src = hit_sound_hndl;
-    decl.volume = gs_clamp(0.5, audio->min_audio_volume, audio->max_audio_volume);
-    decl.persistent = false;
-    gs_handle(gs_audio_instance_t) hit_sound_instance_hndl = gs_audio_instance_create(&decl);
+	gd->hit_sound_hndl = gs_audio_load_from_file("./assets/Hit_Hurt2.wav");
+	gd->crystal_pickup_sound_hndl = gs_audio_load_from_file("./assets/pickup.wav");
+	gd->hit_wall_sound_hndl = gs_audio_load_from_file("./assets/HitWall.wav");
+	gd->buy_positive_sound_hndl = gs_audio_load_from_file("./assets/BuyComplete.wav");
+	gd->buy_negative_sound_hndl = gs_audio_load_from_file("./assets/BuyNegative.wav");
    
 	
 	gs_vec2 ws = window_size();
@@ -113,7 +110,7 @@ void init()
 	next_wave(gd);
 	graphics_init(gd);
 	spawn_player(gd);
-
+	gd->crystals_currency = 99;
 	shop_init_all_upgrades(gd);
 	shop_show(gd);
 }
@@ -136,7 +133,7 @@ void update()
 		return;
 	}
 	if (gs_platform_key_pressed(GS_KEYCODE_ENTER)) {
-		gs_audio_play_source(hit_sound_hndl, 0.5f);
+		gs_audio_play_source(gd->hit_sound_hndl, 0.5f);
 	}
 	if (gs_platform_key_pressed(GS_KEYCODE_M)) {
 		gd->mute = !gd->mute;
@@ -165,6 +162,7 @@ void update()
 	och sånt.
 	Collision borde ändå ha en spatial hashgrid / octtree / binary aab tree
 	*/
+	update_tiles(gd);
 	update_player(gd);
 	update_powerups(gd);
 	update_worms(gd);
@@ -173,7 +171,6 @@ void update()
 	update_projectiles(gd);
 	update_crystals(gd, delta);
 	
-	update_tiles(gd);
 	update_particle_emitters(gd, delta);
 
 	
@@ -219,7 +216,7 @@ void spawn_player(game_data_t* gd)
 	p->player_projectile_accel = PLAYER_BASE_PROJECTILE_ACCELL;
 	p->player_explosion_radius = PLAYER_BASE_EXPLOSION_RADIUS;
 	p->player_shoot_delay = PLAYER_BASE_SHOOT_DELAY;
-	p->player_projectile_reflect_chance = 1.0f;
+	p->player_projectile_reflect_chance = 0.f;
 
 	p->player_particle_emitter = spawn_particle_emitter(gd, &(particle_emitter_desc_t){
 		.particle_amount = 8,
@@ -273,7 +270,7 @@ void update_player(game_data_t* gd)
 	int tile_y = pos->y/TILE_SIZE;
 	if (is_tile_solid(gd, tile_x, tile_y)) {
 		printf("tile");
-		entity_take_dmg(gd, p, p->hp * 0.1, p->position, gs_v2(1,0));//gs_v2(randf(), randf()));
+		entity_take_dmg(gd, p, p->hp * 0.1, p->position, gs_v2(1,0)); //gs_v2(randf(), randf()));
 		
 		explode_tiles(gd, tile_x, tile_y, 3);
 	} else {
@@ -343,7 +340,6 @@ void update_player(game_data_t* gd)
 
 void spawn_projectile(game_data_t* gd, projectile_t* projectile)
 {
-	//printf("spawn projectile\n");
 	gs_dyn_array_push(gd->projecitles, *projectile);
 }
 
@@ -354,7 +350,7 @@ void update_projectiles(game_data_t* gd)
 	int p_size = gs_dyn_array_size(gd->projecitles);
 	bool played_sfx = false;
 
-	for (int i = p_size-1; i >= 0; i--) {
+	for (int i = 0; i < p_size; i++) {
 		projectile_t* p = &gd->projecitles[i];
 		gs_vec2* pos = &p->position;
 		gs_vec2* vel = &p->velocity;
@@ -376,8 +372,10 @@ void update_projectiles(game_data_t* gd)
 			if (is_tile_solid(gd ,tile_x, tile_y)) {
 				should_delete = true;
 				explode_tiles(gd, tile_x, tile_y, p->explode_radius);
-				if (!p->enemy_created)
+				if (!p->enemy_created) {
 					gd->shake_time = 0.05;
+					gs_audio_play_source(gd->hit_wall_sound_hndl, gd->volume * 0.6);
+				}
 			}
 		}
 
@@ -398,21 +396,43 @@ void update_projectiles(game_data_t* gd)
 		} else {
 			for (int enemy_list_i = 0; enemy_list_i < gs_dyn_array_size(gd->enemies); enemy_list_i++) {
 				entity_t** enemy_list = *gd->enemies[enemy_list_i];
-				
+				if (should_delete)
+					break;
 				int list_size = gs_dyn_array_size(enemy_list);
 				for (int j = 0; j < list_size; j++) {
 					entity_t* enemy = enemy_list[j];
+					//gs_println("entity_ignore: %p, enemy: %p", p->entity_ignore, enemy);
 					if (enemy->dead || p->entity_ignore == enemy)
 						continue;
 					if (is_colliding(*pos, enemy->position, p->radius, enemy->radius)) {
+						if (p->entity_ignore != 0) {
+						}
 						should_delete = true;
 						gd->shake_time = 0.05;
 						explode_tiles(gd, tile_x, tile_y, 5);
 						gs_vec2 projectile_dir = gs_vec2_norm(p->velocity);
 						entity_take_dmg(gd, enemy,p->dmg, *pos, projectile_dir);
 						if (randf() <= gd->player.player_projectile_reflect_chance) {
+							p->entity_ignore = enemy;
 							projectile_t new_projectile = *p;
 							new_projectile.entity_ignore = enemy;
+							new_projectile.life_time = 0.f;
+							
+							new_projectile.particle_emitter = spawn_particle_emitter(gd, &(particle_emitter_desc_t){
+								.particle_amount = p->particle_emitter->particle_amount,
+								.particle_color = p->particle_emitter->particle_color,
+								.particle_lifetime = p->particle_emitter->particle_life_time,
+								.particle_shink_out = p->particle_emitter->particle_shrink_out,
+								.particle_size = p->particle_emitter->particle_size,
+								.position = p->position
+							});
+							int vel_length = gs_vec2_len(p->velocity);
+							 
+							float angle = atan2f(p->velocity.y, p->velocity.x);
+							new_projectile.velocity.x = cos(angle + (randf()-0.5)*3.14) * vel_length * 1.5;
+							new_projectile.velocity.y = sin(angle + (randf()-0.5)*3.14) * vel_length * 1.5;
+							p_size++;
+							spawn_projectile(gd, &new_projectile);
 							
 						}
 						break;
@@ -424,21 +444,6 @@ void update_projectiles(game_data_t* gd)
 		// skulle kunna bara swappa plats med sista elementet och sen pop
 		// behöver vända på loopen och ha if delete: i-- p_size--
 		if (should_delete) {
-			/*
-			spawn_particle_emitter(gd, &(particle_emitter_desc_t){
-				.particle_amount 	= 8,
-				.particle_color 	= p->color,//gs_v4(0.4, 0.1, 0.1, 1.0),
-				.particle_lifetime 	= 0.75f,
-				.particle_shink_out = true,
-				.particle_size 		= gs_v2(12,12),
-				.particle_velocity 	= particle_vel,
-				.position 			= hit_pos,
-				.explode = true,
-				.rand_rotation_range = 1.0,
-				.rand_velocity_range = 0.5,
-				.one_shot = true
-			});*/
-
 
 			if (p->particle_emitter) {
 				p->particle_emitter->should_delete = true;
@@ -448,12 +453,18 @@ void update_projectiles(game_data_t* gd)
 				//gs_audio_play_source(hit_sound_hndl, gd->volume);
 				played_sfx = true;
 			}
+			
+			/*
 			if (i < p_size-1) {
 				for (int j = i+1; j < gs_dyn_array_size(gd->projecitles); j++) {
 					gd->projecitles[j-1] = gd->projecitles[j];
 				}
-			}
-			
+			}*/
+			//		 i POP LAST ELEMENT IM STUPID
+			//[a,a,a, OLD, NEW] 
+			gd->projecitles[i] = gd->projecitles[p_size-1];
+			i--;
+			p_size--;
 			gs_dyn_array_pop(gd->projecitles);
 		}
 
@@ -1081,7 +1092,7 @@ void entity_take_dmg(game_data_t* gd, entity_t* entity, int dmg, gs_vec2 hit_pos
 
 	if (entity->flash > 0)
 		return;
-	gs_audio_play_source(hit_sound_hndl, gd->volume);
+	gs_audio_play_source(gd->hit_sound_hndl, gd->volume);
 
 	entity->hp -= dmg;
 	
@@ -1159,6 +1170,7 @@ void update_crystals(game_data_t* gd, float delta)
 			i--;
 			crystals_size--;
 			gs_dyn_array_pop(gd->crystals);
+			gs_audio_play_source(gd->crystal_pickup_sound_hndl, gd->volume * 0.6);
 			gd->crystals_currency++;
 			continue;
 		}
