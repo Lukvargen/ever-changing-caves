@@ -70,6 +70,12 @@ void shop_init_all_upgrades(game_data_t* gd)
         .cost = 50,
         .fvalue = 0.05
     }, 10);
+
+    append_all_upgrades(gd, (upgrade_t){
+        .type = UPGRADE_TYPE_LASER,
+        .cost = 100,
+        .ivalue = 1
+    }, 3);
 }
 
 uint32_t pos_mod(int value, uint32_t m)
@@ -111,7 +117,14 @@ void get_available_upgrades(game_data_t* gd)
 
 void shop_show(game_data_t* gd)
 {
+    gd->paused = true;
     get_available_upgrades(gd);
     
     gd->shop.visible = true;
+}
+void shop_hide(game_data_t* gd)
+{
+    gd->paused = false;
+    gd->shop.visible = false;
+    next_wave(gd);
 }

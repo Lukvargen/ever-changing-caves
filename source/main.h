@@ -184,6 +184,7 @@ typedef struct entity_t
 			int player_explosion_radius;
 			float player_shoot_delay;
 			float player_projectile_reflect_chance;
+			int player_laser_lvl;
 			
 			particle_emitter_t* player_particle_emitter;
 			// går inte ha samma namn i olika strucs i unions. Obviously men kanske ha name_varname före alla?
@@ -212,11 +213,22 @@ typedef struct entity_t
 			particle_emitter_t* orb_particle_emitter;
 			orb_type_t orb_type;
 			float target_speed;
+			float charge_timer;
 		};
 		
 	};
 } entity_t;
 
+
+typedef struct laser_t
+{
+	
+	gs_dyn_array(gs_vec2) points;
+	float time_alive;
+	float max_time_alive;
+	gs_color_t color;
+	int max_targets;
+} laser_t;
 
 typedef struct projectile_t
 {
@@ -258,6 +270,7 @@ typedef struct game_data_t
 
 	entity_t player;
 	gs_dyn_array(projectile_t) projecitles;
+	gs_dyn_array(laser_t) lasers;
 	// tile
 	tile_t tiles[TILES_SIZE_X][TILES_SIZE_Y];
 	gs_handle(gs_graphics_vertex_buffer_t) tile_vbo;
@@ -330,8 +343,14 @@ typedef struct game_data_t
 	gs_dyn_array(entity_t**) enemies; // array med pekare till pekaren som visar en dyn array med pekare..
 
 	struct shop_t shop;
-
+	// wave stuff
 	int wave;
+	float spawn_timer;
+	gs_dyn_array(entity_type_t) enemies_to_spawn;
+	float open_shop_timer;
+
+	float time;
+	bool paused;
 	bool mute;
 	float volume;
 
@@ -340,5 +359,7 @@ typedef struct game_data_t
 
 gs_vec2 get_world_mouse_pos();
 char* projectile_to_string(projectile_t* p);
+void next_wave(game_data_t* gd);
+
 
 #endif

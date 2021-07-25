@@ -16,6 +16,7 @@ typedef enum upgrade_type_t
 	UPGRADE_TYPE_EXPLODE,
 	UPGRADE_TYPE_SHOOT_DELAY,
 	UPGRADE_TYPE_SHOOT_REFLECT,
+	UPGRADE_TYPE_LASER,
 	UPGRADE_TYPE_SIZE,
     UPGRADE_TYPE_NULL
 } upgrade_type_t;
@@ -61,4 +62,5 @@ typedef struct game_data_t game_data_t;
 void shop_init_all_upgrades(game_data_t* gd);
 void get_available_upgrades(game_data_t* gd);
 void shop_show(game_data_t* gd);
+void shop_hide(game_data_t* gd);
 #endif
