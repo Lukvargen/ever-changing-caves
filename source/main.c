@@ -16,7 +16,6 @@
 
 
 
-//float max = 1;
 
 // Forward Declares
 void spawn_player(game_data_t* gd);
@@ -57,10 +56,11 @@ float randf();
 void remove_entity(entity_t* arr[], int* arr_length, int* i);
 void entity_take_dmg(game_data_t* gd, entity_t* entity, int dmg, gs_vec2 hit_pos, gs_vec2 knock_dir);
 
-char* projectile_to_string();
 
 void update_wave_system(game_data_t* gd, float delta);
 void next_wave(game_data_t* gd);
+
+
 
 void init() 
 {
@@ -71,7 +71,7 @@ void init()
 	gd->hit_wall_sound_hndl = gs_audio_load_from_file("./assets/HitWall.wav");
 	gd->buy_positive_sound_hndl = gs_audio_load_from_file("./assets/BuyComplete.wav");
 	gd->buy_negative_sound_hndl = gs_audio_load_from_file("./assets/BuyNegative.wav");
-   
+
 	
 	gs_vec2 ws = window_size();
 	
@@ -80,6 +80,8 @@ void init()
 	
 	gd->volume = 0.5;
 	
+
+	stb__rand_seed = gs_platform_elapsed_time();
 
 	gd->projecitles = NULL;
 	gd->worms = NULL;
@@ -109,13 +111,15 @@ void init()
 	}
 
 	
-
+	gd->wave = 0;
 	gd->enemies_to_spawn = NULL;
+
+	gd->shop.all_upgrades = NULL;
 
 	next_wave(gd);
 	graphics_init(gd);
 	spawn_player(gd);
-	gd->crystals_currency = 99;
+	gd->crystals_currency = 0;
 	shop_init_all_upgrades(gd);
 	//shop_show(gd);
 }
@@ -134,7 +138,7 @@ void update()
 	if (gs_platform_key_pressed(GS_KEYCODE_ESC)) {
 		gs_engine_quit();
 	} else if (gs_platform_key_pressed(GS_KEYCODE_R)) {
-		init();
+		restart_game(gd);
 		return;
 	}
 	if (gs_platform_key_pressed(GS_KEYCODE_ENTER)) {
@@ -153,16 +157,13 @@ void update()
 
 	gd->shake_time -= delta;
 
-	
+	if (gd->restart) {
+		printf("restart\n");
+		restart_game(gd);
+		return;
+	}
 	
 
-	/*
-	i framtiden så hade det varit mycket bättre att ha alla entities i en lista eller iallafall
-	utnytja listor i lista för att göra samma sak på många entities.
-	tex ha if entity.collision_dmg > 0: check collision and do collision
-	och sånt.
-	Collision borde ändå ha en spatial hashgrid / octtree / binary aab tree
-	*/
 	if (!gd->paused) {
 		gd->time += delta;
 		update_wave_system(gd, delta);
@@ -189,6 +190,52 @@ void update()
 	
 }
 
+void restart_game(game_data_t* gd)
+{
+	// det här känns ju väldigt jobbigt och osäkert men det är vad det är
+	gs_dyn_array_clear(gd->enemies_to_spawn);
+	gs_dyn_array_clear(gd->lasers);
+	gs_dyn_array_clear(gd->projecitles);
+	gs_dyn_array_clear(gd->crystals);
+
+	for (int enemy_list_i = 0; enemy_list_i < gs_dyn_array_size(gd->enemies); enemy_list_i++) {
+		entity_t** enemy_list = *gd->enemies[enemy_list_i];
+		int list_size = gs_dyn_array_size(enemy_list);
+		for (int j = 0; j < list_size; j++) {
+			entity_t* enemy = enemy_list[j];
+			free(enemy);
+		}
+		gs_dyn_array_clear(enemy_list);
+	}
+	for (int i = 0; i < gs_dyn_array_size(gd->particle_emitters); i++) {
+		free(gd->particle_emitters[i]);
+	}
+	gs_dyn_array_clear(gd->particle_emitters);
+
+
+	gd->time = 0.f;
+	gd->game_over = false;
+	gd->restart = false;
+	gd->paused = false;
+	gd->shop.visible = false;
+	gd->spawn_timer = 0.f;
+	
+	for (int x = 0; x < TILES_SIZE_X; x++) {
+		for (int y = 0; y < TILES_SIZE_Y; y++) {
+			gd->tiles[x][y].destruction_value = 0;
+			gd->tiles[x][y].noise_value = 0;
+			gd->tiles[x][y].value = 0;
+		}
+	}
+	gs_dyn_array_clear(gd->shop.all_upgrades);
+	shop_init_all_upgrades(gd);
+	spawn_player(gd);
+	gd->crystals_currency = 0;
+	gd->wave = 0;
+	next_wave(gd);
+
+}
+
 void update_tiles(game_data_t* gd)
 {
 	float delta = gs_platform_delta_time();
@@ -196,7 +243,7 @@ void update_tiles(game_data_t* gd)
 	for (int x = 0; x < TILES_SIZE_X; x++) {
 		for (int y = 0; y < TILES_SIZE_Y; y++) {
 			tile_t* tile = &gd->tiles[x][y];
-			tile->noise_value = (stb_perlin_noise3(x*0.1, y*0.1, gd->time * 0.2, 0, 0, 0) + 1) / 2.f; // wrap needs to be power of 2... Change perlin noise file maybe
+			tile->noise_value = (stb_perlin_noise3(x*0.1, y*0.1, gd->time * 0.15, 0, 0, 0) + 1) / 2.f;
 			tile->destruction_value -= 0.1 * delta;
 			if (tile->destruction_value < 0) tile->destruction_value = 0;
 			tile->value = tile->noise_value + tile->destruction_value;
@@ -210,10 +257,12 @@ void update_tiles(game_data_t* gd)
 void spawn_player(game_data_t* gd)
 {
 	entity_t* p = &gd->player;
+	*p = (entity_t){0};
 	p->position.x = RESOLUTION_X / 2;
 	p->position.y = RESOLUTION_Y / 2;
 	p->radius = 4.f;
-	p->hp = PLAYER_MAX_HP;
+	p->max_hp = 10;
+	p->hp = p->max_hp;
 	p->dmg = 1;
 	p->player_projectile_lifetime = PLAYER_BASE_PROJECTILE_LIFETIME;
 	p->player_projectile_speed = PLAYER_BASE_PROJECITLE_SPEED;
@@ -221,7 +270,8 @@ void spawn_player(game_data_t* gd)
 	p->player_explosion_radius = PLAYER_BASE_EXPLOSION_RADIUS;
 	p->player_shoot_delay = PLAYER_BASE_SHOOT_DELAY;
 	p->player_projectile_reflect_chance = 0.f;
-	gd->player.player_laser_lvl = 4;
+	p->player_projectile_reflect_amount = 1;
+	gd->player.player_laser_lvl = 0;
 
 
 	p->player_particle_emitter = spawn_particle_emitter(gd, &(particle_emitter_desc_t){
@@ -246,6 +296,12 @@ void update_player(game_data_t* gd)
 	gs_vec2* pos = &gd->player.position;
 	gs_vec2* vel = &gd->player.velocity;
 	float delta = gs_platform_delta_time();
+
+	if (p->dead) {
+		gd->game_over = true;
+		gd->paused = true;
+		
+	}
 
 	p->flash -= 5*delta;
 	if (p->flash < 0)
@@ -276,7 +332,7 @@ void update_player(game_data_t* gd)
 	int tile_y = pos->y/TILE_SIZE;
 	if (is_tile_solid(gd, tile_x, tile_y)) {
 		printf("tile");
-		entity_take_dmg(gd, p, p->hp * 0.1, p->position, gs_v2(1,0)); //gs_v2(randf(), randf()));
+		entity_take_dmg(gd, p, p->max_hp * 0.1, p->position, gs_v2(1,0)); //gs_v2(randf(), randf()));
 		
 		explode_tiles(gd, tile_x, tile_y, 3);
 	} else {
@@ -384,7 +440,7 @@ void spawn_laser(game_data_t* gd, int dmg, gs_vec2 pos, float radius, gs_color_t
 			if (should_break)
 				break;
 		}
-		if (!added_enemy)
+		if (!added_enemy || gs_dyn_array_size(targets) >= max_targets)
 			break;
 	}
 	int targets_size = gs_dyn_array_size(targets); 
@@ -512,29 +568,32 @@ void update_projectiles(game_data_t* gd)
 						gs_vec2 projectile_dir = gs_vec2_norm(p->velocity);
 						entity_take_dmg(gd, enemy,p->dmg, *pos, projectile_dir);
 						
-						spawn_laser(gd, 1, enemy->position, 128, gs_color(125, 91, 166, 255), gd->player.player_laser_lvl);
+						spawn_laser(gd, 1, enemy->position, 128, gs_color(125, 91, 166, 255), gd->player.player_laser_lvl+1);
 
 						if (randf() <= gd->player.player_projectile_reflect_chance) {
 							p->entity_ignore = enemy;
-							projectile_t new_projectile = *p;
-							new_projectile.entity_ignore = enemy;
-							new_projectile.life_time = 0.f;
-							
-							new_projectile.particle_emitter = spawn_particle_emitter(gd, &(particle_emitter_desc_t){
-								.particle_amount = p->particle_emitter->particle_amount,
-								.particle_color = p->particle_emitter->particle_color,
-								.particle_lifetime = p->particle_emitter->particle_life_time,
-								.particle_shink_out = p->particle_emitter->particle_shrink_out,
-								.particle_size = p->particle_emitter->particle_size,
-								.position = p->position
-							});
-							int vel_length = gs_vec2_len(p->velocity);
-							 
-							float angle = atan2f(p->velocity.y, p->velocity.x);
-							new_projectile.velocity.x = cos(angle + (randf()-0.5)*3.14) * vel_length * 1.5;
-							new_projectile.velocity.y = sin(angle + (randf()-0.5)*3.14) * vel_length * 1.5;
-							p_size++;
-							spawn_projectile(gd, &new_projectile);
+							for (int i = 0; i < gd->player.player_projectile_reflect_amount; i++) {
+
+								projectile_t new_projectile = *p;
+								new_projectile.entity_ignore = enemy;
+								new_projectile.life_time = 0.f;
+								
+								new_projectile.particle_emitter = spawn_particle_emitter(gd, &(particle_emitter_desc_t){
+									.particle_amount = p->particle_emitter->particle_amount,
+									.particle_color = p->particle_emitter->particle_color,
+									.particle_lifetime = p->particle_emitter->particle_life_time,
+									.particle_shink_out = p->particle_emitter->particle_shrink_out,
+									.particle_size = p->particle_emitter->particle_size,
+									.position = p->position
+								});
+								int vel_length = gs_vec2_len(p->velocity);
+								
+								float angle = atan2f(p->velocity.y, p->velocity.x);
+								new_projectile.velocity.x = cos(angle + (randf()-0.5)*3.14) * vel_length;
+								new_projectile.velocity.y = sin(angle + (randf()-0.5)*3.14) * vel_length;
+								p_size++;
+								spawn_projectile(gd, &new_projectile);
+							}
 							
 						}
 						break;
@@ -580,15 +639,17 @@ void spawn_worm(game_data_t* gd, worm_type_t type, int segments, gs_vec2 pos, fl
 		color = gs_v4(0.1, 0.4, 0.2, 1.0);
 
 	}
-
+	// ha stats som parametrar eller int de är frågan men det spelar ingen roll
 	entity_t* head = malloc(sizeof(entity_t));
+	int hp = 3 * pow(1.2, gd->wave);
+	int dmg = 1 * pow(1.15, gd->wave);
 	*head = (entity_t){
-		.hp = 3,
+		.hp = hp,
 		.position = pos,
 		.radius = radius,
 		.color = color,
 		.worm_type = type,
-		.dmg = 1,
+		.dmg = dmg,
 	};
 	gs_vec4 particle_color = color;
 	particle_color.w = 0.5f;
@@ -643,7 +704,7 @@ void update_worms(game_data_t* gd)
 			head->dead_timer += delta;
 			head->worm_particle_emitter->emitting = false;
 			if (head->dead_timer > 0.5f) {
-				spawn_crystals(gd, head->position, 5);
+				spawn_crystals(gd, head->position, 5 * pow(1.05, gd->wave-1));
 
 				gd->worms[i] = gd->worms[worms_size-1];
 				gs_dyn_array_pop(gd->worms);
@@ -895,14 +956,29 @@ particle_emitter_t* spawn_particle_emitter(game_data_t* gd, particle_emitter_des
 void spawn_turret(game_data_t* gd, gs_vec2 pos, turret_type_t type)
 {
 	entity_t* turret = malloc(sizeof(entity_t));
+	int hp = 5 * pow(1.2, gd->wave);
+	int dmg = 1.5 * pow(1.15, gd->wave);
+	gs_vec4 color = gs_v4(1.0, 1.0, 1.0, 1.0);
+	float turret_shot_delay = 2.f;
+	float turret_burst_shoot_delay = TURRET_BURST_SHOT_DELAY;
+
+	
+	if (type == TURRET_TYPE_SPIN) {
+		color.z = 1.25;
+		turret_shot_delay = 0.f;
+		turret_burst_shoot_delay = 0.1;
+		hp = 8 * pow(1.2, gd->wave);
+	}
 	*turret = (entity_t) {
 		.position = pos,
 		.radius = 9,
-		.hp = 3,
-		.turret_shoot_delay = 2.f,
-		.color = gs_v4(0.4, 0.3, 0.3, 1.0),
+		.hp = hp,
+		.turret_shoot_delay = turret_shot_delay,
+		.turret_burst_shoot_delay = turret_burst_shoot_delay,
+		.color = color,
 		.type = ENTITY_TYPE_TURRET,
 		.turret_type = type,
+		.dmg = dmg
 	};
 	
 	gs_dyn_array_push(gd->turrets, turret);
@@ -910,7 +986,7 @@ void spawn_turret(game_data_t* gd, gs_vec2 pos, turret_type_t type)
 void update_turrets(game_data_t* gd, float delta)
 {
 
-
+ 
 	int turrets_size = gs_dyn_array_size(gd->turrets);
 	for (int i = 0; i < turrets_size; i++) {
 		entity_t* t = gd->turrets[i];
@@ -920,7 +996,7 @@ void update_turrets(game_data_t* gd, float delta)
 		t->turret_time_since_spawn += delta;
 		
 		if (t->dead) {
-			spawn_crystals(gd, t->position, 7);
+			spawn_crystals(gd, t->position, 7 * pow(1.05, gd->wave-1));
 			spawn_particle_emitter(gd, &(particle_emitter_desc_t){
 				.explode = true,
 				.one_shot = true,
@@ -934,14 +1010,21 @@ void update_turrets(game_data_t* gd, float delta)
 				.rand_rotation_range = 2 * 3.14,
 				.rand_velocity_range = 0.5
 			});
+			free(t);
 			remove_entity(gd->turrets, &turrets_size, &i);
 			continue;
 		}
 
 		gs_vec2 player_pos = gd->player.position;
+		gs_vec2 target_dir;
 		t->turret_angle = atan2f(player_pos.y - t->position.y, player_pos.x - t->position.x);
-		gs_vec2 target_dir = gs_vec2_sub(player_pos, t->position);
-		target_dir = gs_vec2_norm(target_dir);
+		if (t->turret_type == TURRET_TYPE_NORMAL) {
+			target_dir = gs_vec2_sub(player_pos, t->position);
+			target_dir = gs_vec2_norm(target_dir);
+		} else if (t->turret_type == TURRET_TYPE_SPIN) {
+			t->turret_angle = t->turret_time_since_spawn*3 + sin(t->turret_time_since_spawn)*0.5;
+			target_dir = gs_v2(cos(t->turret_angle), sin(t->turret_angle));
+		}
 
 		if (t->turret_time_since_spawn < TURRET_ANIMATION_SPAWN_TIME)
 			continue;
@@ -955,33 +1038,62 @@ void update_turrets(game_data_t* gd, float delta)
 		}
 		if (t->turret_shooting) {
 			t->turret_shoot_time += delta;
-			if (t->turret_shoot_time >= TURRET_BURST_SHOT_DELAY) {
+
+			if (t->turret_shoot_time >= t->turret_burst_shoot_delay) {
 				t->turret_shoot_time = 0.f;
 				// spawn projectile
-				gs_vec2 projectile_vel = gs_vec2_scale(target_dir, 100);
-				if (t->turret_type == TURRET_TYPE_NORMAL) {
-					spawn_projectile(gd, &(projectile_t){
-						.enemy_created = true,
-						.position = t->position,
-						.velocity = projectile_vel,
-						.radius = 4,
-						.accell = 100,
-						.max_life_time = 1.5,
-						.dmg = 2,
-						.go_through_walls = true,
-						.particle_emitter = spawn_particle_emitter(gd, &(particle_emitter_desc_t){
-							.particle_amount = 6,
-							.particle_color = gs_v4(0.3, 0.1, 0.1, 1.0),
-							.particle_lifetime = 0.15,
-							.particle_shink_out = true,
-							.particle_size = gs_v2(8, 8),
-							.position = t->position
-							
-						})
-					});
-				} else if (t->turret_type == TURRET_TYPE_WORM_SPAWN) {
-					spawn_worm(gd, WORM_TYPE_NORMAL, 2, t->position, 4);
+				switch (t->turret_type) {
+					gs_vec2 projectile_vel;
+					case (TURRET_TYPE_NORMAL):
+						projectile_vel = gs_vec2_scale(target_dir, 100);
+						
+						spawn_projectile(gd, &(projectile_t){
+							.enemy_created = true,
+							.position = t->position,
+							.velocity = projectile_vel,
+							.radius = 4,
+							.accell = 100,
+							.max_life_time = 1.5,
+							.dmg = t->dmg,
+							.go_through_walls = true,
+							.particle_emitter = spawn_particle_emitter(gd, &(particle_emitter_desc_t){
+								.particle_amount = 6,
+								.particle_color = gs_v4(0.3, 0.1, 0.1, 1.0),
+								.particle_lifetime = 0.15,
+								.particle_shink_out = true,
+								.particle_size = gs_v2(8, 8),
+								.position = t->position
+								
+							})
+						});
+						break;
+					case (TURRET_TYPE_SPIN):
+						projectile_vel = gs_vec2_scale(target_dir, 25);
+						
+						spawn_projectile(gd, &(projectile_t){
+							.enemy_created = true,
+							.position = t->position,
+							.velocity = projectile_vel,
+							.radius = 4,
+							.accell = 100,
+							.max_life_time = 1.5,
+							.dmg = t->dmg,
+							.go_through_walls = false,
+							.explode_radius = 1,
+							.particle_emitter = spawn_particle_emitter(gd, &(particle_emitter_desc_t){
+								.particle_amount = 6,
+								.particle_color = gs_v4(0.3, 0.4, 0.7, 1.0),
+								.particle_lifetime = 0.15,
+								.particle_shink_out = true,
+								.particle_size = gs_v2(8, 8),
+								.position = t->position
+								
+							})
+						});
+						break;
+
 				}
+				
 
 				t->turret_shot_count++;
 				if (t->turret_shot_count >= TURRET_BURST_COUNT) {
@@ -1015,10 +1127,12 @@ void spawn_orb(game_data_t* gd, orb_type_t orb_type, gs_vec2 pos)
 	}
 
 	entity_t* orb = malloc(sizeof(entity_t));
+	int hp = 5 * pow(1.2, gd->wave);
+	int dmg = 1 * pow(1.15, gd->wave);
 	*orb = (entity_t){
-		.hp = 5,
+		.hp = hp,
 		.radius = 12,
-		.dmg = 1,
+		.dmg = dmg,
 		.velocity = rand_vel,
 		.position = pos,
 		.color = color,
@@ -1054,7 +1168,7 @@ void update_orbs(game_data_t* gd, float delta)
 			o->flash = 0.f;
 		
 		if (o->dead) {
-			spawn_crystals(gd, o->position, 5);
+			spawn_crystals(gd, o->position, 5 * pow(1.05, gd->wave-1));
 			spawn_particle_emitter(gd, &(particle_emitter_desc_t){
 				.explode = true,
 				.one_shot = true,
@@ -1080,8 +1194,8 @@ void update_orbs(game_data_t* gd, float delta)
 			o->charge_timer = randf() * 2 + 1;
 			gs_vec2 dir = gs_vec2_sub(gd->player.position, o->position);
 			dir = gs_vec2_norm(dir);
-			o->velocity.x += dir.x * 200;
-			o->velocity.y += dir.y * 200;
+			o->velocity.x = dir.x * 300;
+			o->velocity.y = dir.y * 300;
 
 			if (o->orb_type == ORB_TYPE_BLUE) {
 				int p_amount = 8;
@@ -1284,6 +1398,7 @@ void update_wave_system(game_data_t* gd, float delta)
 			gd->spawn_timer = 5;
 			int spawn_amount_random = 0;
 			if (gd->wave >= 10)
+
 				spawn_amount_random = 4;
 			else if (gd->wave >= 5)
 				spawn_amount_random = 3;
@@ -1293,16 +1408,16 @@ void update_wave_system(game_data_t* gd, float delta)
 			if (spawn_amount > enemies_left_to_spawn)
 				spawn_amount = enemies_left_to_spawn;
 			
-			gs_println("enemies_left_to_spawn %i", enemies_left_to_spawn);
+			//gs_println("enemies_left_to_spawn %i", enemies_left_to_spawn);
 			for (int i = 0; i < spawn_amount; i++) {
 				int index = (int)(randf()*enemies_left_to_spawn);
 				entity_type_t type = gd->enemies_to_spawn[index];
 				gd->enemies_to_spawn[index] = gd->enemies_to_spawn[enemies_left_to_spawn-1];
 				enemies_left_to_spawn--;
 				gs_dyn_array_pop(gd->enemies_to_spawn);
+				gs_vec2 spawn_pos;
 				switch (type) {
 					case (ENTITY_TYPE_WORM):
-						gs_vec2 spawn_pos;
 						spawn_pos.x = RESOLUTION_X * randf();
 						spawn_pos.y = 0;
 						if (randf() > 0.5) {
@@ -1318,8 +1433,8 @@ void update_wave_system(game_data_t* gd, float delta)
 						spawn_pos.x = (RESOLUTION_X-20) * randf() + 20;
 						spawn_pos.y = (RESOLUTION_Y-20) * randf() + 20;
 						turret_type_t type = TURRET_TYPE_NORMAL;
-						if (randf() >= 1.0) {
-							type = TURRET_TYPE_WORM_SPAWN; // gör om gör rätt eller nått
+						if (randf() >= 0.6) {
+							type = TURRET_TYPE_SPIN;
 							
 						}
 						spawn_turret(gd, spawn_pos, type);
@@ -1376,10 +1491,153 @@ void append_enemies_to_spawn(game_data_t* gd, entity_type_t type, int amount) {
 void next_wave(game_data_t* gd)
 {
 	gd->wave++;
+	gd->open_shop_timer = 0.f;
+	int worm_amount = 2 * pow(1.1, gd->wave);
+	append_enemies_to_spawn(gd, ENTITY_TYPE_WORM, worm_amount);
+	int turret_amount = 1.5 * pow(1.1, gd->wave);
+	append_enemies_to_spawn(gd, ENTITY_TYPE_TURRET, turret_amount);
+	int orb_amount = 1 * pow(1.1, gd->wave);
+	append_enemies_to_spawn(gd, ENTITY_TYPE_ORB, orb_amount);
 
-	append_enemies_to_spawn(gd, ENTITY_TYPE_WORM, 2);
-	append_enemies_to_spawn(gd, ENTITY_TYPE_TURRET, 2);
-	append_enemies_to_spawn(gd, ENTITY_TYPE_ORB, 2);
+	switch (gd->wave) {
+		case (1):
+			append_all_upgrades(gd, (upgrade_t){
+			.type = UPGRADE_TYPE_DMG,
+			.cost = 20,
+			.ivalue = 1
+			}, 5);
+			append_all_upgrades(gd, (upgrade_t){
+			.type = UPGRADE_TYPE_HP,
+			.cost = 20,
+			.ivalue = 2
+			}, 5);
+			append_all_upgrades(gd, (upgrade_t){
+				.type = UPGRADE_TYPE_LIFETIME,
+				.cost = 10,
+				.fvalue = 0.1f
+			}, 3);
+			append_all_upgrades(gd, (upgrade_t){
+				.type = UPGRADE_TYPE_SPEED,
+				.cost = 10,
+				.fvalue = 50.f
+			}, 3);
+			append_all_upgrades(gd, (upgrade_t){
+				.type = UPGRADE_TYPE_ACCELL,
+				.cost = 10,
+				.fvalue = 50.f
+			}, 3);
+			append_all_upgrades(gd, (upgrade_t){
+				.type = UPGRADE_TYPE_EXPLODE,
+				.cost = 20,
+				.ivalue = 1
+			}, 1);
+			append_all_upgrades(gd, (upgrade_t){
+				.type = UPGRADE_TYPE_SHOOT_DELAY,
+				.cost = 20,
+				.fvalue = 0.05
+			}, 3);
+			append_all_upgrades(gd, (upgrade_t){
+				.type = UPGRADE_TYPE_SHOOT_REFLECT,
+				.cost = 20,
+				.fvalue = 0.1
+				}, 1);
+			append_all_upgrades(gd, (upgrade_t){
+				.type = UPGRADE_TYPE_SHOOT_REFLECT,
+				.cost = 40,
+				.fvalue = 0.1
+				}, 1);
+			append_all_upgrades(gd, (upgrade_t){
+				.type = UPGRADE_TYPE_LASER,
+				.cost = 50,
+				.ivalue = 1
+			}, 1);
+			append_all_upgrades(gd, (upgrade_t){
+				.type = UPGRADE_TYPE_LASER,
+				.cost = 30,
+				.ivalue = 1
+			}, 1);
+			break;
+		case(3):
+			append_all_upgrades(gd, (upgrade_t){
+				.type = UPGRADE_TYPE_DMG,
+				.cost = 20,
+				.ivalue = 1
+				}, 5);
+			append_all_upgrades(gd, (upgrade_t){
+				.type = UPGRADE_TYPE_HP,
+				.cost = 20,
+				.ivalue = 3
+				}, 5);
+			append_all_upgrades(gd, (upgrade_t){
+				.type = UPGRADE_TYPE_SHOOT_REFLECT_AMOUNT,
+				.cost = 30,
+				.ivalue = 1
+			}, 2);
+			break;
+		case(5):
+			append_all_upgrades(gd, (upgrade_t){
+			.type = UPGRADE_TYPE_DMG,
+			.cost = 25,
+			.ivalue = 2
+			}, 5);
+			append_all_upgrades(gd, (upgrade_t){
+			.type = UPGRADE_TYPE_HP,
+			.cost = 25,
+			.ivalue = 5
+			}, 5);
+			append_all_upgrades(gd, (upgrade_t){
+				.type = UPGRADE_TYPE_LIFETIME,
+				.cost = 15,
+				.fvalue = 0.1f
+			}, 2);
+			append_all_upgrades(gd, (upgrade_t){
+				.type = UPGRADE_TYPE_SPEED,
+				.cost = 15,
+				.fvalue = 50.f
+			}, 1);
+			append_all_upgrades(gd, (upgrade_t){
+				.type = UPGRADE_TYPE_ACCELL,
+				.cost = 15,
+				.fvalue = 50.f
+			}, 1);
+			append_all_upgrades(gd, (upgrade_t){
+				.type = UPGRADE_TYPE_EXPLODE,
+				.cost = 40,
+				.ivalue = 1
+			}, 1);
+			append_all_upgrades(gd, (upgrade_t){
+				.type = UPGRADE_TYPE_SHOOT_DELAY,
+				.cost = 30,
+				.fvalue = 0.05
+			}, 2);
+			append_all_upgrades(gd, (upgrade_t){
+			.type = UPGRADE_TYPE_SHOOT_REFLECT,
+			.cost = 50,
+			.fvalue = 0.1
+			}, 2);
+			append_all_upgrades(gd, (upgrade_t){
+				.type = UPGRADE_TYPE_LASER,
+				.cost = 50,
+				.ivalue = 1
+			}, 2);
+
+			break;
+		case (10):
+			append_all_upgrades(gd, (upgrade_t){
+			.type = UPGRADE_TYPE_DMG,
+			.cost = 30,
+			.ivalue = 2
+			}, 5);
+			append_all_upgrades(gd, (upgrade_t){
+			.type = UPGRADE_TYPE_HP,
+			.cost = 40,
+			.ivalue = 5
+			}, 10);
+			break;
+
+
+
+	}
 
 	printf("next wave! wave: %i\n", gd->wave);
 }
@@ -1442,17 +1700,10 @@ gs_vec2 steer(gs_vec2 from_pos, gs_vec2 target_pos, gs_vec2 velocity, float max_
 
 float randf()  
 {
+	
 	return (float)stb_frand();
 }
 
-char* projectile_to_string(char* buffer, projectile_t* p)
-{
-	buffer[0] = '\0';
-	strcat(buffer, "Some ");
-	strcat(buffer, "Text");
-	
-	return buffer;
-}
 
 
 // Globals

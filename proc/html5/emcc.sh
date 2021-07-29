@@ -8,7 +8,7 @@ proj_name=App
 proj_root_dir=$(pwd)/../
 
 flags=(
-    -w -s WASM=1 -s USE_WEBGL2=1 -s ASYNCIFY=1 -O1 -s SINGLE_FILE 
+    -w -s WASM=1 -s USE_WEBGL2=1 -s ASYNCIFY=1 -O1 # -s SINGLE_FILE 
 )
 
 
@@ -24,7 +24,7 @@ src=(
 
 
 # Build
-emcc ${inc[*]} ${src[*]} ${flags[*]} -o $proj_name.html
+emcc ${inc[*]} ${src[*]} ${flags[*]} -o $proj_name.html --embed-file ../assets/
 
 cd ..
 $SHELL

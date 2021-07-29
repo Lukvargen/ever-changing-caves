@@ -101,7 +101,10 @@ void ui_calculate_size(ui_control_t* control)
     total_size = gs_vec2_add(total_size, gs_vec2_scale(control->padding, 2));
     control->size = total_size;
     control->pos = gs_vec2_sub(control->pos, control->padding);
-
+    control->pos.x = (int)control->pos.x;
+    control->pos.y = (int)control->pos.y;
+    control->size.x = (int)control->size.x;
+    control->size.y = (int)control->size.y;
 
 }
 
@@ -179,9 +182,6 @@ bool ui_button(gs_immediate_draw_t* gsi, ui_control_t* control)
 
     gsi_defaults(gsi);
     
-    /*
-    maybe add content_pos, content_size and that.. for the padding
-    */
 
    return pressed;
 

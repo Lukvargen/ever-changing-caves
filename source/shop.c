@@ -14,8 +14,8 @@ void shop_init_all_upgrades(game_data_t* gd)
         gd->shop.upgrades_available[i] = (upgrade_t){.type=UPGRADE_TYPE_NULL,.cost = 9999};
     }
 
-    gd->shop.all_upgrades = NULL;
-    
+   
+    /*
     append_all_upgrades(gd, (upgrade_t){
         .type = UPGRADE_TYPE_DMG,
         .cost = 25,
@@ -76,6 +76,7 @@ void shop_init_all_upgrades(game_data_t* gd)
         .cost = 100,
         .ivalue = 1
     }, 3);
+    */
 }
 
 uint32_t pos_mod(int value, uint32_t m)

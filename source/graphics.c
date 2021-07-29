@@ -5,14 +5,21 @@
 #include "../data/particle_data.c"
 #include "../data/entity_data.c"
 
+#define GS_ASSET_IMPL
+#include <gs/util/gs_asset.h>
+
 
 gs_asset_texture_t circle_16px; // not the best way...
 gs_asset_texture_t turret_png;
 gs_asset_texture_t turret_barrel_png;
 gs_asset_texture_t worm_png;
 
+gs_asset_font_t font_large;
 gs_asset_font_t font_medium;
 gs_asset_font_t font_small;
+
+
+
 
 // Forward Declares
 void draw_tiles(game_data_t* gd, gs_command_buffer_t* gcb);
@@ -35,6 +42,7 @@ void graphics_init(game_data_t* gd)
 	gs_asset_texture_load_from_file("./assets/Turret.png", &turret_png, NULL, true, false);
 	gs_asset_texture_load_from_file("./assets/TurretBarrel.png", &turret_barrel_png, NULL, true, false);
 	gs_asset_texture_load_from_file("./assets/Worm.png", &worm_png, NULL, true, false);
+	gs_asset_font_load_from_file("./assets/joystix monospace.ttf", &font_large, 32);
 	gs_asset_font_load_from_file("./assets/joystix monospace.ttf", &font_medium, 16);
 	gs_asset_font_load_from_file("./assets/fff-forward.regular.ttf", &font_small, 12);
 
@@ -91,10 +99,14 @@ void draw_game(game_data_t* gd)
 		t += padding;
 		gsi_rect(gsi, l, b, r, t,
 		200, 0, 0, 255, GS_GRAPHICS_PRIMITIVE_TRIANGLES);
-		float percent = gd->player.hp / (PLAYER_MAX_HP*1.0f);
+		float percent = gd->player.hp / (gd->player.max_hp*1.0f);
+		if (percent < 0)
+			percent = 0.f;
 		r = l + (r-l) * percent;
 		gsi_rect(gsi, l, b, r, t,
 		0, 200, 0, 255, GS_GRAPHICS_PRIMITIVE_TRIANGLES);
+		gsi_rect(gsi, l, b, r, t,
+		150, 200, 150, 255, GS_GRAPHICS_PRIMITIVE_LINES);
 	}
 	char str1[100] = "CRYSTALS: ";
 	int length = snprintf(NULL, 0, "%d", gd->crystals_currency);
@@ -103,8 +115,14 @@ void draw_game(game_data_t* gd)
 	strcat(str1, crystals_str);
 	gsi_text(gsi, 16, hp_bar_size + 12, str1, &font_medium, false, 255,255,255,255);
 	free(crystals_str);
+
+	char wave_str[100] = "\n";
+	snprintf(wave_str, 100, "WAVE:%i", gd->wave);
+	gsi_text(gsi, RESOLUTION_X-80, 20, wave_str, &font_medium, false, 255, 255, 255, 255);
 	
 	gsi_defaults(gsi);
+
+	
 	
 	
 	
@@ -127,11 +145,14 @@ void draw_game(game_data_t* gd)
 			upgrade_t* upgrade = &gd->shop.upgrades_available[i];
 			bool visible = true;
 			
-
+ 
 			
 			switch(upgrade->type) {
 				case (UPGRADE_TYPE_DMG):
 					gs_snprintf(text, TEXT_SIZE, "DMG+%i\n(%i->%i)", upgrade->ivalue, gd->player.dmg, gd->player.dmg + upgrade->ivalue);
+					break;
+				case (UPGRADE_TYPE_HP):
+					gs_snprintf(text, TEXT_SIZE, "HP+%i\n(%i->%i)", upgrade->ivalue, gd->player.max_hp, gd->player.max_hp + upgrade->ivalue);
 					break;
 				case (UPGRADE_TYPE_LIFETIME):
 					gs_snprintf(text, TEXT_SIZE, "P LIFETIME+%.1f\n(%.1f->%.1f)", upgrade->fvalue, gd->player.player_projectile_lifetime, gd->player.player_projectile_lifetime + upgrade->fvalue);
@@ -149,10 +170,13 @@ void draw_game(game_data_t* gd)
 					gs_snprintf(text, TEXT_SIZE, "SHOOT DELAY-%.2f\n(%.2f->%.2f)", upgrade->fvalue, gd->player.player_shoot_delay, gd->player.player_shoot_delay - upgrade->fvalue);
 					break;
 				case (UPGRADE_TYPE_SHOOT_REFLECT):
-					gs_snprintf(text, TEXT_SIZE, "SHOT REFLECT+%.0f %%\n(%.0f%%->%.0f%%)", upgrade->fvalue*100, gd->player.player_projectile_reflect_chance*100, gd->player.player_shoot_delay*100 - upgrade->fvalue*100);
+					gs_snprintf(text, TEXT_SIZE, "SHOT REFLECT+%.0f %%\n(%.0f%%->%.0f%%)", upgrade->fvalue*100, gd->player.player_projectile_reflect_chance*100, 100*(gd->player.player_projectile_reflect_chance - upgrade->fvalue));
+					break;
+				case (UPGRADE_TYPE_SHOOT_REFLECT_AMOUNT):
+					gs_snprintf(text, TEXT_SIZE, "SHOT REFLECT AMOUNT+%i\n(%i->%i)", upgrade->ivalue, gd->player.player_projectile_reflect_amount, gd->player.player_projectile_reflect_amount + upgrade->ivalue);
 					break;
 				case (UPGRADE_TYPE_LASER):
-					gs_snprintf(text, TEXT_SIZE, "LASER LVL+%i \n(%i->%i)", upgrade->ivalue, gd->player.player_laser_lvl, gd->player.player_laser_lvl + upgrade->ivalue);
+					gs_snprintf(text, TEXT_SIZE, "LASER TARGETS+%i \n(%i->%i)", upgrade->ivalue, gd->player.player_laser_lvl, gd->player.player_laser_lvl + upgrade->ivalue);
 					break;
 				case (UPGRADE_TYPE_NULL):
 					visible = false;
@@ -217,39 +241,45 @@ void draw_game(game_data_t* gd)
 				}
 
 				switch(upgrade->type) {
-				case (UPGRADE_TYPE_DMG):
-					printf("pressed dmg\n");
-					gd->player.dmg += upgrade->ivalue;
-					break;
-				case (UPGRADE_TYPE_LIFETIME):
-					gd->player.player_projectile_lifetime += upgrade->fvalue;
-					break;
-				case (UPGRADE_TYPE_SPEED):
-					gd->player.player_projectile_speed += upgrade->fvalue;
-					break;
-				case (UPGRADE_TYPE_ACCELL):
-					gd->player.player_projectile_accel += upgrade->fvalue;
-					break;
-				case (UPGRADE_TYPE_EXPLODE):
-					gd->player.player_explosion_radius += upgrade->ivalue;
-					break;
-				case (UPGRADE_TYPE_SHOOT_DELAY):
-					gd->player.player_shoot_delay -= upgrade->fvalue;
-					break;
-				case (UPGRADE_TYPE_SHOOT_REFLECT):
-					gd->player.player_projectile_reflect_chance += upgrade->fvalue;
-					break;
-				case (UPGRADE_TYPE_LASER):
-					gd->player.player_laser_lvl += upgrade->ivalue;
-					break;
-				default:
-					break;
+					case (UPGRADE_TYPE_DMG):
+						gd->player.dmg += upgrade->ivalue;
+						break;
+					case (UPGRADE_TYPE_HP):
+						gd->player.max_hp += upgrade->ivalue;
+						gd->player.hp += upgrade->ivalue;
+						break;
+					case (UPGRADE_TYPE_LIFETIME):
+						gd->player.player_projectile_lifetime += upgrade->fvalue;
+						break;
+					case (UPGRADE_TYPE_SPEED):
+						gd->player.player_projectile_speed += upgrade->fvalue;
+						break;
+					case (UPGRADE_TYPE_ACCELL):
+						gd->player.player_projectile_accel += upgrade->fvalue;
+						break;
+					case (UPGRADE_TYPE_EXPLODE):
+						gd->player.player_explosion_radius += upgrade->ivalue;
+						break;
+					case (UPGRADE_TYPE_SHOOT_DELAY):
+						gd->player.player_shoot_delay -= upgrade->fvalue;
+						break;
+					case (UPGRADE_TYPE_SHOOT_REFLECT):
+						gd->player.player_projectile_reflect_chance += upgrade->fvalue;
+						break;
+					case (UPGRADE_TYPE_SHOOT_REFLECT_AMOUNT):
+						gd->player.player_projectile_reflect_amount += upgrade->ivalue;
+						break;
+					case (UPGRADE_TYPE_LASER):
+						gd->player.player_laser_lvl += upgrade->ivalue;
+						break;
+					default:
+						break;
 				}
 
 				upgrade->type = UPGRADE_TYPE_NULL;
 			}
 		}
-		int heal_cost = 100;
+		int heal_cost = 10;
 		gs_color_t btn_color = gs_color(60, 20, 20, 255);
 		if (gd->crystals_currency >= heal_cost) {
 			btn_color = gs_color(20, 60, 20, 255);
@@ -272,13 +302,13 @@ void draw_game(game_data_t* gd)
 				gd->crystals_currency -= heal_cost;
 				gs_audio_play_source(gd->buy_positive_sound_hndl, gd->volume);
 				printf("Heal!\n");
-				gd->player.hp = PLAYER_MAX_HP;
+				gd->player.hp = gd->player.max_hp;
 			} else {
 				gs_audio_play_source(gd->buy_negative_sound_hndl, gd->volume);
 				
 			}
 		}
-		int reroll_cost = 100;
+		int reroll_cost = 5 * pow(1.1, gd->wave-1);
 		btn_color = gs_color(60, 20, 20, 255);
 		if (gd->crystals_currency >= reroll_cost) {
 			btn_color = gs_color(20, 60, 20, 255);
@@ -327,7 +357,7 @@ void draw_game(game_data_t* gd)
 	}
 
 
-	gsi_blend_enabled(gsi, true);
+	//gsi_blend_enabled(gsi, true);
 	for (int i = 0; i < gs_dyn_array_size(gd->lasers); i++) {
 		laser_t* laser = &gd->lasers[i];
 		gs_color_t color = laser->color;
@@ -336,6 +366,29 @@ void draw_game(game_data_t* gd)
 			gs_vec2 p1 = laser->points[j];
 			gs_vec2 p2 = laser->points[j+1];
 			gsi_linev(gsi, p1, p2, color);
+		}
+	}
+
+	
+	if (gd->game_over) {
+		gs_vec2 dims = gs_asset_font_get_text_dimensions(&font_large, "GAME OVER");
+		int y = (RESOLUTION_Y - dims.y) / 2;
+		gsi_text(gsi, (RESOLUTION_X - dims.x) / 2, y, "GAME OVER", &font_large, false, 255, 255, 255, 255);
+		gsi_defaults(gsi);
+		if (ui_button(gsi, &(ui_control_t){
+			.visible = true,
+			.text = "RESTART",
+			.pos = gs_v2(RESOLUTION_X/2, y + dims.y +1 ),
+			.padding = gs_v2(5,5),
+			.font_height = FONT_HEIGHT,
+			.font = font_medium,
+			.color = gs_color(30, 30, 30, 255),
+			.border = true,
+			.center_x = true,
+			.border_color = gs_color(200, 200, 200, 255)
+		})) {
+			printf("RESTART!\n");
+			gd->restart = true;
 		}
 	}
 
@@ -726,7 +779,7 @@ void draw_tiles(game_data_t* gd, gs_command_buffer_t* gcb)
 	
 	gs_graphics_bind_pipeline(gcb, gd->tile_pip);
 	
-	gs_vec3 wall_color = {33/255.0, 11/255.0, 44/255.0};
+	gs_vec3 wall_color = {43/255.0, 22/255.0, 60/255.0};//{33/255.0, 11/255.0, 44/255.0};
 	gs_vec3 floor_color = {216/255.0, 180/255.0, 226/255.0};
 	gs_vec3 col;
 	for (int x = 0; x < TILES_SIZE_X; x++) {
@@ -950,7 +1003,7 @@ void draw_entities(game_data_t* gd, gs_command_buffer_t* gcb)
 	for (int i = 0; i < t_size; i++) {
 		entity_t* t = gd->turrets[i];
 
-		color = gs_v4(1.0, 1.0, 1.0, 1.0);
+		color =  t->color;//gs_v4(1.0, 1.0, 1.0, 1.0);
 		flash = t->flash;
 		tex = turret_png;
 

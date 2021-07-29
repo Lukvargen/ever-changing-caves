@@ -40,8 +40,8 @@ GS_VERSION_STR
 "   uv = a_uv;\n"
 "   if (u_shake != 0) {\n"
 "       float strength = 0.01;\n"
-"       gl_Position.x += cos(u_time * 10) * strength;\n"
-"       gl_Position.y += cos(u_time * 15) * strength;\n"
+"       gl_Position.x += cos(u_time * 10.0) * strength;\n"
+"       gl_Position.y += cos(u_time * 15.0) * strength;\n"
 "   }\n"
 "}";
 

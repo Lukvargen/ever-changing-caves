@@ -10,12 +10,14 @@
 typedef enum upgrade_type_t
 {
 	UPGRADE_TYPE_DMG,
+	UPGRADE_TYPE_HP,
 	UPGRADE_TYPE_LIFETIME,
 	UPGRADE_TYPE_SPEED,
 	UPGRADE_TYPE_ACCELL,
 	UPGRADE_TYPE_EXPLODE,
 	UPGRADE_TYPE_SHOOT_DELAY,
 	UPGRADE_TYPE_SHOOT_REFLECT,
+	UPGRADE_TYPE_SHOOT_REFLECT_AMOUNT,
 	UPGRADE_TYPE_LASER,
 	UPGRADE_TYPE_SIZE,
     UPGRADE_TYPE_NULL
@@ -60,6 +62,7 @@ typedef struct shop_t
 
 typedef struct game_data_t game_data_t;
 void shop_init_all_upgrades(game_data_t* gd);
+void append_all_upgrades(game_data_t* gd, upgrade_t upgrade, int amount);
 void get_available_upgrades(game_data_t* gd);
 void shop_show(game_data_t* gd);
 void shop_hide(game_data_t* gd);

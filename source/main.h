@@ -11,7 +11,6 @@
 #define PLAYER_SPEED	150.f
 #define PLAYER_ACCEL	8.f
 #define PLAYER_SHOOT_TIMER	0.25f
-#define PLAYER_MAX_HP	10
 
 #define PLAYER_BASE_PROJECTILE_LIFETIME 0.5f
 #define PLAYER_BASE_PROJECITLE_SPEED	200.f
@@ -149,6 +148,7 @@ typedef enum orb_type_t
 typedef enum turret_type_t
 {
 	TURRET_TYPE_NORMAL,
+	TURRET_TYPE_SPIN,
 	TURRET_TYPE_WORM_SPAWN
 } turret_type_t;
 
@@ -162,6 +162,7 @@ typedef struct entity_t
 {
 	entity_type_t type;
 	int hp;
+	int max_hp;
 	int dmg;
 	float radius;
 	bool dead;
@@ -184,6 +185,7 @@ typedef struct entity_t
 			int player_explosion_radius;
 			float player_shoot_delay;
 			float player_projectile_reflect_chance;
+			int player_projectile_reflect_amount;
 			int player_laser_lvl;
 			
 			particle_emitter_t* player_particle_emitter;
@@ -199,6 +201,7 @@ typedef struct entity_t
 		{
 			float turret_shoot_time;
 			float turret_shoot_delay;
+			float turret_burst_shoot_delay;
 			float turret_angle;
 			int turret_shot_count;
 			gs_vec2 turret_dir;
@@ -351,6 +354,8 @@ typedef struct game_data_t
 
 	float time;
 	bool paused;
+	bool game_over;
+	bool restart;
 	bool mute;
 	float volume;
 
@@ -360,6 +365,7 @@ typedef struct game_data_t
 gs_vec2 get_world_mouse_pos();
 char* projectile_to_string(projectile_t* p);
 void next_wave(game_data_t* gd);
+void restart_game(game_data_t* gd);
 
 
 #endif
