@@ -31,7 +31,7 @@ gs_vec2 ui_get_content_size(ui_control_t* control)
         text_dims = gs_asset_font_get_text_dimensions(&control->font, control->text);
         float longest_width = 0.f;
 
-        char* text_copy = malloc(strlen(control->text)+1); // sizeof(control->text)
+        char* text_copy = malloc(strlen(control->text)+1);
         strcpy(text_copy, control->text);
         char* token = strtok(text_copy, "\n");
         int i = 0;
@@ -64,11 +64,10 @@ void ui_calculate_size(ui_control_t* control)
 {
     gs_vec2 text_dims = {0};
     if (control->text != NULL) {
-        //text_dims = gs_asset_font_get_text_dimensions(&control->font, control->text);
 
         float longest_width = 0.f;
 
-        char* text_copy = malloc(strlen(control->text)+1); // sizeof(control->text)
+        char* text_copy = malloc(strlen(control->text)+1);
         strcpy(text_copy, control->text);
         char* token = strtok(text_copy, "\n");
         int i = 0;
@@ -122,11 +121,10 @@ ui_control_t* ui_panel(gs_immediate_draw_t* gsi, ui_control_t* control)
     
     
     int i = 0;
-    char* text_copy = malloc(strlen(control->text)+1); // sizeof(control->text)
+    char* text_copy = malloc(strlen(control->text)+1);
     strcpy(text_copy, control->text);
     char* token = strtok(text_copy, "\n");
     while (token != NULL) {
-        //printf("%s \n", token);
         gsi_text(gsi, control->content_pos.x, control->content_pos.y + control->font_height * (1+i), token, &control->font, false, 200, 200, 200, 255);
         token = strtok(NULL, "\n");
         i++;
@@ -147,7 +145,6 @@ bool ui_button(gs_immediate_draw_t* gsi, ui_control_t* control)
 
     gs_color_t color = control->color;
     bool pressed = false;
-    //gs_vec2 m_pos = gs_platform_mouse_poget_world_mouse_possitionv();
     gs_vec2 m_pos = get_world_mouse_pos();
     if (m_pos.x >= control->pos.x && m_pos.x < control->pos.x + control->size.x &&
         m_pos.y >= control->pos.y && m_pos.y < control->pos.y + control->size.y) {
@@ -165,14 +162,13 @@ bool ui_button(gs_immediate_draw_t* gsi, ui_control_t* control)
     gsi_rectv(gsi, control->pos, gs_vec2_add(control->pos, control->size), color, GS_GRAPHICS_PRIMITIVE_TRIANGLES);
     if (control->border)
         gsi_rectv(gsi, control->pos, gs_vec2_add(control->pos, control->size), control->border_color, GS_GRAPHICS_PRIMITIVE_LINES);
-    //gsi_text(gsi, control->content_pos.x, control->content_pos.y + control->font_height, control->text, &control->font, false, 200, 200, 200, 255); 
+     
 
     int i = 0;
-    char* text_copy = malloc(strlen(control->text)+1); // sizeof(control->text)
+    char* text_copy = malloc(strlen(control->text)+1);
     strcpy(text_copy, control->text);
     char* token = strtok(text_copy, "\n");
     while (token != NULL) {
-        //printf("%s \n", token);
         gsi_text(gsi, control->content_pos.x, control->content_pos.y + control->font_height * (1+i), token, &control->font, false, 200, 200, 200, 255);
         token = strtok(NULL, "\n");
         i++;
@@ -184,7 +180,6 @@ bool ui_button(gs_immediate_draw_t* gsi, ui_control_t* control)
     
 
    return pressed;
-
 }
 
 

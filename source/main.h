@@ -1,5 +1,5 @@
-#ifndef __MAIN__
-#define __MAIN__
+#ifndef MAIN_H
+#define MAIN_H
 #include <gs/gs.h>
 #include <gs/util/gs_idraw.h>
 #include "shop.h"
@@ -10,7 +10,6 @@
 ======================*/
 #define PLAYER_SPEED	150.f
 #define PLAYER_ACCEL	8.f
-#define PLAYER_SHOOT_TIMER	0.25f
 
 #define PLAYER_BASE_PROJECTILE_LIFETIME 0.5f
 #define PLAYER_BASE_PROJECITLE_SPEED	200.f
@@ -31,16 +30,16 @@
 #define PROJECITLE_MAX_LIFE_TIME 3.f
 #define EXPLODE_DMG 5.f
 
-#define TILES_SIZE_X	80
-#define TILES_SIZE_Y	45
+#define TILES_SIZE_X	80 // RESOLUTION_X / TILE_SIZE
+#define TILES_SIZE_Y	45 // RESOLUTION_Y / TILE_SIZE
 #define TILE_SIZE		8
 #define TILE_AIR_THRESHOLD 0.4f
 
 
 
 #define window_size(...)	gs_platform_window_sizev(gs_platform_main_window())
-#define RESOLUTION_X	640.f // 480
-#define RESOLUTION_Y	360.f // 270
+#define RESOLUTION_X	640.f
+#define RESOLUTION_Y	360.f
 
 
 
@@ -125,10 +124,6 @@ typedef struct particle_emitter_desc_t
 	bool one_shot;
 } particle_emitter_desc_t;
 
-
-
-
-
 typedef struct crystal_t
 {
 	gs_vec2 position;
@@ -173,7 +168,6 @@ typedef struct entity_t
 	gs_vec2 velocity;
 	gs_vec4 color;
 
-
 	union
 	{
 		struct // player
@@ -189,15 +183,15 @@ typedef struct entity_t
 			int player_laser_lvl;
 			
 			particle_emitter_t* player_particle_emitter;
-			// går inte ha samma namn i olika strucs i unions. Obviously men kanske ha name_varname före alla?
+			
 		};
 		struct // worm
 		{
-			struct entity_t* worm_segment; // skulle kunna ha worm segment struct. Beror på om jag vill att segmenten faktiskt ska göra något
+			struct entity_t* worm_segment;
 			particle_emitter_t* worm_particle_emitter;
 			worm_type_t worm_type;
 		};
-		struct // turret // kan krasha om inte ordningen är på visst sätt. borde inte auto padding?
+		struct // turret
 		{
 			float turret_shoot_time;
 			float turret_shoot_delay;
@@ -222,10 +216,8 @@ typedef struct entity_t
 	};
 } entity_t;
 
-
 typedef struct laser_t
 {
-	
 	gs_dyn_array(gs_vec2) points;
 	float time_alive;
 	float max_time_alive;
@@ -248,16 +240,6 @@ typedef struct projectile_t
 	bool enemy_created;
 	bool go_through_walls;
 } projectile_t;
-
-
-// TODO
-/*
-Ändra alla dyn_array(entity_t*) till entity_t
-Inte så mycket jobb och det är bättre.
-Skulle man behöva ref till en entity så får jag ta och fixa slot_array
-Eeelller spelar det ingen större roll.
-*/
-
 
 typedef struct game_data_t 
 {
@@ -317,23 +299,12 @@ typedef struct game_data_t
 	gs_handle(gs_graphics_uniform_t) u_entity_mvp;
 
 	gs_dyn_array(entity_t*) worms;
-	int worms_left_to_spawn;
-	float worm_spawn_timer;
-	float worm_spawn_time;
 
 	gs_dyn_array(powerup_t*) powerups;
-	float powerup_spawn_timer;
-	float powerup_spawn_time;
 
 	gs_dyn_array(entity_t*) turrets;
-	int turrets_left_to_spawn;
-	float turret_spawn_timer;
-	float turret_spawn_time;
 	
 	gs_dyn_array(entity_t*) orbs;
-	int orbs_left_to_spawn;
-	float orb_spawn_timer;
-	float orb_spawn_time;
 
 	gs_dyn_array(crystal_t) crystals;
 	int crystals_currency;
@@ -343,7 +314,7 @@ typedef struct game_data_t
 
 	gs_dyn_array(particle_emitter_t*) particle_emitters;
 
-	gs_dyn_array(entity_t**) enemies; // array med pekare till pekaren som visar en dyn array med pekare..
+	gs_dyn_array(entity_t**) enemies; // collection of all enemy arrays
 
 	struct shop_t shop;
 	// wave stuff
@@ -363,7 +334,6 @@ typedef struct game_data_t
 
 
 gs_vec2 get_world_mouse_pos();
-char* projectile_to_string(projectile_t* p);
 void next_wave(game_data_t* gd);
 void restart_game(game_data_t* gd);
 

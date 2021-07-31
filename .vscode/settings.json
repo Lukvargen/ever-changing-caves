@@ -17,6 +17,7 @@
         "tuple": "c",
         "utility": "c",
         "bit": "c",
-        "shop.h": "c"
+        "shop.h": "c",
+        "ios": "c"
     }
 }

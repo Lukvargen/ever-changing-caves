@@ -9,7 +9,7 @@
 #include <gs/util/gs_asset.h>
 
 
-gs_asset_texture_t circle_16px; // not the best way...
+gs_asset_texture_t circle_16px;
 gs_asset_texture_t turret_png;
 gs_asset_texture_t turret_barrel_png;
 gs_asset_texture_t worm_png;
@@ -128,14 +128,8 @@ void draw_game(game_data_t* gd)
 	
 	if (gd->shop.visible) {
 		int center_x = RESOLUTION_X / 2;
-		int center_y = RESOLUTION_Y / 2;
 		int upgrade_panel_size_x = RESOLUTION_X/4;
-		int upgrade_panel_size_y = 25;
-		int upgrade_btn_size_x = 50;
-		int upgrade_btn_size_y = 25;
-		//int upgrade_panel_x = center_x
 		
-		// gsi_text(gsi, 50, 300, "some\ntext", &font_small, false, 200, 200, 200, 255);
 		gs_vec2 panel_pos = gs_v2(upgrade_panel_size_x / 2 - 10, 150);
 		for (int i = 0; i < SHOP_UPGRADES_SIZE; i++) {
 			#define FONT_HEIGHT 14
@@ -145,52 +139,13 @@ void draw_game(game_data_t* gd)
 			upgrade_t* upgrade = &gd->shop.upgrades_available[i];
 			bool visible = true;
 			
- 
 			
-			switch(upgrade->type) {
-				case (UPGRADE_TYPE_DMG):
-					gs_snprintf(text, TEXT_SIZE, "DMG+%i\n(%i->%i)", upgrade->ivalue, gd->player.dmg, gd->player.dmg + upgrade->ivalue);
-					break;
-				case (UPGRADE_TYPE_HP):
-					gs_snprintf(text, TEXT_SIZE, "HP+%i\n(%i->%i)", upgrade->ivalue, gd->player.max_hp, gd->player.max_hp + upgrade->ivalue);
-					break;
-				case (UPGRADE_TYPE_LIFETIME):
-					gs_snprintf(text, TEXT_SIZE, "P LIFETIME+%.1f\n(%.1f->%.1f)", upgrade->fvalue, gd->player.player_projectile_lifetime, gd->player.player_projectile_lifetime + upgrade->fvalue);
-					break;
-				case (UPGRADE_TYPE_SPEED):
-					gs_snprintf(text, TEXT_SIZE, "P SPEED+%.0f\n(%.0f->%.0f)", upgrade->fvalue, gd->player.player_projectile_speed, gd->player.player_projectile_speed + upgrade->fvalue);
-					break;
-				case (UPGRADE_TYPE_ACCELL):
-					gs_snprintf(text, TEXT_SIZE, "P ACCEL+%.0f\n(%.0f->%.0f)", upgrade->fvalue, gd->player.player_projectile_accel, gd->player.player_projectile_accel + upgrade->fvalue);
-					break;
-				case (UPGRADE_TYPE_EXPLODE):
-					gs_snprintf(text, TEXT_SIZE, "P EXPLODE+%i\n(%i->%i)", upgrade->ivalue, gd->player.player_explosion_radius, gd->player.player_explosion_radius + upgrade->ivalue);
-					break;
-				case (UPGRADE_TYPE_SHOOT_DELAY):
-					gs_snprintf(text, TEXT_SIZE, "SHOOT DELAY-%.2f\n(%.2f->%.2f)", upgrade->fvalue, gd->player.player_shoot_delay, gd->player.player_shoot_delay - upgrade->fvalue);
-					break;
-				case (UPGRADE_TYPE_SHOOT_REFLECT):
-					gs_snprintf(text, TEXT_SIZE, "SHOT REFLECT+%.0f %%\n(%.0f%%->%.0f%%)", upgrade->fvalue*100, gd->player.player_projectile_reflect_chance*100, 100*(gd->player.player_projectile_reflect_chance - upgrade->fvalue));
-					break;
-				case (UPGRADE_TYPE_SHOOT_REFLECT_AMOUNT):
-					gs_snprintf(text, TEXT_SIZE, "SHOT REFLECT AMOUNT+%i\n(%i->%i)", upgrade->ivalue, gd->player.player_projectile_reflect_amount, gd->player.player_projectile_reflect_amount + upgrade->ivalue);
-					break;
-				case (UPGRADE_TYPE_LASER):
-					gs_snprintf(text, TEXT_SIZE, "LASER TARGETS+%i \n(%i->%i)", upgrade->ivalue, gd->player.player_laser_lvl, gd->player.player_laser_lvl + upgrade->ivalue);
-					break;
-				case (UPGRADE_TYPE_NULL):
-					visible = false;
-					break;
-				default:
-					gs_snprintf(text, TEXT_SIZE, "ERROR");
-					gs_println("NO UPGRADE TYPE");
-					break;
-
-
-			}
 			
+			if (upgrade->type == UPGRADE_TYPE_NULL)
+				visible = false;
+			else
+				get_upgrade_string(gd, upgrade, text, TEXT_SIZE);
 
-			//gs_println("cost: %d", upgrade->cost);
 			gs_snprintfc(cost_text, TEXT_SIZE, "\n \nCost %i", upgrade->cost);
 			strcat(text, cost_text);
 
@@ -230,53 +185,8 @@ void draw_game(game_data_t* gd)
 				.center_x = true,
 				.border_color = gs_color(200, 200, 200, 255),
 			})) {
-				printf("pressed button\n");
 
-				if (gd->crystals_currency >= upgrade->cost) {
-					gd->crystals_currency -= upgrade->cost;
-					gs_audio_play_source(gd->buy_positive_sound_hndl, gd->volume);
-				} else {
-					gs_audio_play_source(gd->buy_negative_sound_hndl, gd->volume);
-					continue;
-				}
-
-				switch(upgrade->type) {
-					case (UPGRADE_TYPE_DMG):
-						gd->player.dmg += upgrade->ivalue;
-						break;
-					case (UPGRADE_TYPE_HP):
-						gd->player.max_hp += upgrade->ivalue;
-						gd->player.hp += upgrade->ivalue;
-						break;
-					case (UPGRADE_TYPE_LIFETIME):
-						gd->player.player_projectile_lifetime += upgrade->fvalue;
-						break;
-					case (UPGRADE_TYPE_SPEED):
-						gd->player.player_projectile_speed += upgrade->fvalue;
-						break;
-					case (UPGRADE_TYPE_ACCELL):
-						gd->player.player_projectile_accel += upgrade->fvalue;
-						break;
-					case (UPGRADE_TYPE_EXPLODE):
-						gd->player.player_explosion_radius += upgrade->ivalue;
-						break;
-					case (UPGRADE_TYPE_SHOOT_DELAY):
-						gd->player.player_shoot_delay -= upgrade->fvalue;
-						break;
-					case (UPGRADE_TYPE_SHOOT_REFLECT):
-						gd->player.player_projectile_reflect_chance += upgrade->fvalue;
-						break;
-					case (UPGRADE_TYPE_SHOOT_REFLECT_AMOUNT):
-						gd->player.player_projectile_reflect_amount += upgrade->ivalue;
-						break;
-					case (UPGRADE_TYPE_LASER):
-						gd->player.player_laser_lvl += upgrade->ivalue;
-						break;
-					default:
-						break;
-				}
-
-				upgrade->type = UPGRADE_TYPE_NULL;
+				upgrade_purchase(gd, upgrade);
 			}
 		}
 		int heal_cost = 10;
@@ -301,7 +211,6 @@ void draw_game(game_data_t* gd)
 			if (gd->crystals_currency >= heal_cost) {
 				gd->crystals_currency -= heal_cost;
 				gs_audio_play_source(gd->buy_positive_sound_hndl, gd->volume);
-				printf("Heal!\n");
 				gd->player.hp = gd->player.max_hp;
 			} else {
 				gs_audio_play_source(gd->buy_negative_sound_hndl, gd->volume);
@@ -350,14 +259,13 @@ void draw_game(game_data_t* gd)
 			.center_x = true,
 			.border_color = gs_color(200, 200, 200, 255)
 		})) {
-			printf("Next Wave!\n");
 			gs_audio_play_source(gd->buy_positive_sound_hndl, gd->volume);
 			shop_hide(gd);
 		}
 	}
 
 
-	//gsi_blend_enabled(gsi, true);
+	gsi_blend_enabled(gsi, true);
 	for (int i = 0; i < gs_dyn_array_size(gd->lasers); i++) {
 		laser_t* laser = &gd->lasers[i];
 		gs_color_t color = laser->color;
@@ -387,12 +295,10 @@ void draw_game(game_data_t* gd)
 			.center_x = true,
 			.border_color = gs_color(200, 200, 200, 255)
 		})) {
-			printf("RESTART!\n");
 			gd->restart = true;
 		}
 	}
 
-	//gsi_line(gsi, 20, 20, 200, 200, 200, 200, 50, 255);
 
 	// render to frame buffer
 	gs_graphics_begin_render_pass(gcb, gd->rp);
@@ -411,7 +317,6 @@ void draw_game(game_data_t* gd)
 		gs_graphics_clear(gcb, &clear);
 		// draws quad with frame buffer image
 		draw_screen(gd, gcb);
-		//gsi_draw(gsi, gcb);
 	gs_graphics_end_render_pass(gcb);
 
 	
@@ -421,7 +326,6 @@ void draw_game(game_data_t* gd)
 
 void init_tiles(game_data_t* gd)
 {
-    // Tiles
 	gd->tile_vbo = gs_graphics_vertex_buffer_create(
 		&(gs_graphics_vertex_buffer_desc_t) {
 			.data = tile_v_data,
@@ -433,9 +337,7 @@ void init_tiles(game_data_t* gd)
 	// blir det ens snyggt med gradient?
 	// lika bra att göra ändå för att få det till en drawcall...
 
-	// attrib pos 1 = 16
-	// model scale 16 transate 0
-	// måla topleft 0,0 scale 16
+
 	
 	gd->tile_ibo = gs_graphics_index_buffer_create(
 		&(gs_graphics_index_buffer_desc_t) {
@@ -479,11 +381,6 @@ void init_tiles(game_data_t* gd)
 			.raster = {
 				.shader = gd->tile_shader
 			},
-			.blend = { // hur den ska hantera alpha?
-				.func = GS_GRAPHICS_BLEND_EQUATION_ADD,
-				.src = GS_GRAPHICS_BLEND_MODE_SRC_ALPHA,
-				.dst = GS_GRAPHICS_BLEND_MODE_ONE_MINUS_SRC_ALPHA
-			},
 			.layout = {
 				.attrs = (gs_graphics_vertex_attribute_desc_t[]) {
 					{.format = GS_GRAPHICS_VERTEX_ATTRIBUTE_FLOAT2, .name = "a_pos"}
@@ -498,16 +395,11 @@ void init_tiles(game_data_t* gd)
 
 void init_screen_quad(game_data_t* gd)
 {
-/*
-"uniform bool u_shake;\n"
-"uniform float u_time;\n"
-*/
-
 	gd->u_screen_shake = gs_graphics_uniform_create(
 		&(gs_graphics_uniform_desc_t) {
 			.stage = GS_GRAPHICS_SHADER_STAGE_VERTEX,
 			.name = "u_shake",
-			.layout = &(gs_graphics_uniform_layout_desc_t){.type = GS_GRAPHICS_UNIFORM_INT} // finns inte UNIFORM_BOOL..
+			.layout = &(gs_graphics_uniform_layout_desc_t){.type = GS_GRAPHICS_UNIFORM_INT} // true / false
 		}
 	);
 	gd->u_screen_time = gs_graphics_uniform_create(
@@ -731,7 +623,7 @@ void init_framebuffer(game_data_t* gd)
 	// construct color render target
 	gd->rt = gs_graphics_texture_create(
 		&(gs_graphics_texture_desc_t) {
-			.width = RESOLUTION_X, // hur ändrar man live? eller gör man bara en stor och sen scalar ner?
+			.width = RESOLUTION_X,
 			.height = RESOLUTION_Y,
 			.format = GS_GRAPHICS_TEXTURE_FORMAT_RGBA8,
 			.wrap_s = GS_GRAPHICS_TEXTURE_WRAP_CLAMP_TO_EDGE,
@@ -758,13 +650,7 @@ void draw_tiles(game_data_t* gd, gs_command_buffer_t* gcb)
 	gs_mat4 model = gs_mat4_identity();
 	model = gs_mat4_scale(TILE_SIZE, TILE_SIZE, 0.0f);
 	
-	
-	// loop through tiles:
-	// change uniform
-	// apply binds or just use the same struct and update values...
-	// draw
-	//gs_mat4
-	// uniforms
+
 	gs_graphics_bind_uniform_desc_t uniforms[] = {
 		(gs_graphics_bind_uniform_desc_t){.uniform = gd->u_tile_color, .data = &t_color},
 		(gs_graphics_bind_uniform_desc_t){.uniform = gd->u_tile_model, .data = &model},
@@ -778,28 +664,28 @@ void draw_tiles(game_data_t* gd, gs_command_buffer_t* gcb)
 	};
 	
 	gs_graphics_bind_pipeline(gcb, gd->tile_pip);
-	
+	// TODO add batch rendering
+
 	gs_vec3 wall_color = {43/255.0, 22/255.0, 60/255.0};//{33/255.0, 11/255.0, 44/255.0};
 	gs_vec3 floor_color = {216/255.0, 180/255.0, 226/255.0};
 	gs_vec3 col;
 	for (int x = 0; x < TILES_SIZE_X; x++) {
 		for (int y = 0; y < TILES_SIZE_Y; y++) {
 			int x_pos = x * TILE_SIZE;
-			int y_pos = y * TILE_SIZE; // coords 0 -> -1 ? projection invert maybe or something
+			int y_pos = y * TILE_SIZE;
 			float tile_value = gd->tiles[x][y].value;
 			if (tile_value > TILE_AIR_THRESHOLD) {
 				tile_value = TILE_AIR_THRESHOLD / tile_value;
 				if (tile_value > 1) tile_value = 1;
 				col = wall_color;
 			} else col = floor_color;
-			//gs_println("col r %f", col.x);
-			//t_color = gs_v3((1-tile_value), (1-tile_value), (1-tile_value));
+			
 			t_color = gs_vec3_scale(col, tile_value);
 			gs_mat4 scale = gs_mat4_scale(TILE_SIZE, TILE_SIZE, 0.0f);
 			gs_mat4 translation = gs_mat4_translate(x_pos, y_pos, 0.0f);
 			model = gs_mat4_mul(translation, scale);
 
-			gs_graphics_apply_bindings(gcb, &binds); // need apply after change
+			gs_graphics_apply_bindings(gcb, &binds);
 			gs_graphics_draw(gcb, &(gs_graphics_draw_desc_t){.start = 0, .count = 6});
 
 		}
@@ -808,12 +694,9 @@ void draw_tiles(game_data_t* gd, gs_command_buffer_t* gcb)
 
 void draw_particles(game_data_t* gd, gs_command_buffer_t* gcb)
 {
-
-	// set texture
-
 	gs_vec4 color;
 	gs_mat4 mvp;
-	// just set gs_mat4 mvp model view projection uniform 
+	
 	gs_graphics_bind_uniform_desc_t uniforms[] = {
 		(gs_graphics_bind_uniform_desc_t){.uniform = gd->u_particle_color, .data = &color},
 		(gs_graphics_bind_uniform_desc_t){.uniform = gd->u_particle_mvp, .data = &mvp},
@@ -847,8 +730,8 @@ void draw_particles(game_data_t* gd, gs_command_buffer_t* gcb)
 			mvp = gs_mat4_mul(gd->projection, model);
 			color = p.color;
 
-			//gs_graphics_apply_bindings(gcb, ); // uppdaterar detta texture också?? inte så bra i så fall 
-			gs_graphics_apply_bindings(gcb, &binds); // kolla om man kan ha 2 apply bindings.
+			
+			gs_graphics_apply_bindings(gcb, &binds);
 			gs_graphics_draw(gcb, &(gs_graphics_draw_desc_t){.start = 0, .count = 6});
 
 
@@ -864,12 +747,12 @@ void draw_entities(game_data_t* gd, gs_command_buffer_t* gcb)
 	float flash;
 	gs_mat4 mvp;
 	gs_asset_texture_t tex = circle_16px;
-	// just set gs_mat4 mvp model view projection uniform 
+	// having the entities texture on a atlas would probably be better...
 	gs_graphics_bind_uniform_desc_t uniforms[] = {
 		(gs_graphics_bind_uniform_desc_t){.uniform = gd->u_entity_color, .data = &color},
 		(gs_graphics_bind_uniform_desc_t){.uniform = gd->u_entity_flash, .data = &flash},
 		(gs_graphics_bind_uniform_desc_t){.uniform = gd->u_entity_mvp, .data = &mvp},
-		(gs_graphics_bind_uniform_desc_t){.uniform = gd->u_entity_texture, .data = &tex}, // texture borde vara atlas och bara ändras 1 gång
+		(gs_graphics_bind_uniform_desc_t){.uniform = gd->u_entity_texture, .data = &tex},
 	};
 
 	gs_graphics_bind_desc_t binds = {
@@ -881,7 +764,6 @@ void draw_entities(game_data_t* gd, gs_command_buffer_t* gcb)
 
 	// Player
 	{
-
 		color = gs_v4(50/255.0, 150/255.0, 50/255.0, 1.0);
 		flash = gd->player.flash;
 		float size = gd->player.radius * 2;
@@ -889,7 +771,7 @@ void draw_entities(game_data_t* gd, gs_command_buffer_t* gcb)
 		gs_mat4 model = gs_mat4_mul(translation, gs_mat4_scale(size, size, 0));
 		mvp = gs_mat4_mul(gd->projection, model);
 
-		gs_graphics_apply_bindings(gcb, &binds); // kolla om man kan ha 2 apply bindings.
+		gs_graphics_apply_bindings(gcb, &binds);
 		gs_graphics_draw(gcb, &(gs_graphics_draw_desc_t){.start = 0, .count = 6});
 
 		size += 2;
@@ -898,7 +780,7 @@ void draw_entities(game_data_t* gd, gs_command_buffer_t* gcb)
 		model = gs_mat4_mul(translation, gs_mat4_scale(size, size, 0));
 		mvp = gs_mat4_mul(gd->projection, model);
 
-		gs_graphics_apply_bindings(gcb, &binds); // kolla om man kan ha 2 apply bindings.
+		gs_graphics_apply_bindings(gcb, &binds);
 		gs_graphics_draw(gcb, &(gs_graphics_draw_desc_t){.start = 0, .count = 6});
 
 	}
@@ -914,7 +796,7 @@ void draw_entities(game_data_t* gd, gs_command_buffer_t* gcb)
 		gs_mat4 model = gs_mat4_mul(translation, gs_mat4_scale(size, size, 0));
 		mvp = gs_mat4_mul(gd->projection, model);
 
-		gs_graphics_apply_bindings(gcb, &binds); // kolla om man kan ha 2 apply bindings.
+		gs_graphics_apply_bindings(gcb, &binds);
 		gs_graphics_draw(gcb, &(gs_graphics_draw_desc_t){.start = 0, .count = 6});
 
 	}
@@ -926,10 +808,9 @@ void draw_entities(game_data_t* gd, gs_command_buffer_t* gcb)
 		entity_t* head = gd->worms[i];
 		gs_vec2 pos = head->position;
 
-		//color = gs_v4(200/255.0, 20/255.0, 20/255.0, 1.0);
+		
 		color = head->color;
 		flash = head->flash;
-		//printf("flash %f \n", flash);
 		gs_mat4 translation = gs_mat4_translate(pos.x, pos.y, 0.0f);
 		float size = head->radius * 2;
 		gs_mat4 model = gs_mat4_mul(translation, gs_mat4_scale(size, size, 0));
@@ -944,7 +825,7 @@ void draw_entities(game_data_t* gd, gs_command_buffer_t* gcb)
 			
 		}
 		color.w = alpha;
-		gs_graphics_apply_bindings(gcb, &binds); // kolla om man kan ha 2 apply bindings.
+		gs_graphics_apply_bindings(gcb, &binds);
 		gs_graphics_draw(gcb, &(gs_graphics_draw_desc_t){.start = 0, .count = 6});
 
 		entity_t* parent = head;
@@ -956,7 +837,6 @@ void draw_entities(game_data_t* gd, gs_command_buffer_t* gcb)
 			alpha = gs_max(alpha, 0);
 			
 			
-			//color = gs_v4(0.6 - 0.04 * i, 20/255.0, 20/255.0, alpha);
 			color = head->color;
 			color.x -= 0.04 * i;
 			color.w = alpha;
@@ -966,16 +846,12 @@ void draw_entities(game_data_t* gd, gs_command_buffer_t* gcb)
 			gs_mat4 model = gs_mat4_mul(translation, gs_mat4_scale(size, size, 0));
 			mvp = gs_mat4_mul(gd->projection, model);
 
-			gs_graphics_apply_bindings(gcb, &binds); // kolla om man kan ha 2 apply bindings.
+			gs_graphics_apply_bindings(gcb, &binds);
 			gs_graphics_draw(gcb, &(gs_graphics_draw_desc_t){.start = 0, .count = 6});
 
 			i++;
 			parent = child;
 		}
-
-
-		
-
 	}
 
 	
@@ -991,7 +867,7 @@ void draw_entities(game_data_t* gd, gs_command_buffer_t* gcb)
 		gs_mat4 model = gs_mat4_mul(translation, gs_mat4_scale(size, size, 0));
 		mvp = gs_mat4_mul(gd->projection, model);
 
-		gs_graphics_apply_bindings(gcb, &binds); // kolla om man kan ha 2 apply bindings.
+		gs_graphics_apply_bindings(gcb, &binds);
 		gs_graphics_draw(gcb, &(gs_graphics_draw_desc_t){.start = 0, .count = 6});
 	}
 
@@ -1003,13 +879,12 @@ void draw_entities(game_data_t* gd, gs_command_buffer_t* gcb)
 	for (int i = 0; i < t_size; i++) {
 		entity_t* t = gd->turrets[i];
 
-		color =  t->color;//gs_v4(1.0, 1.0, 1.0, 1.0);
+		color =  t->color;
 		flash = t->flash;
 		tex = turret_png;
 
-		//gs_mat4 rot = gs_mat4_rotate(t->angle, 0, 0, 1);
 		gs_mat4 translation = gs_mat4_translate(t->position.x, t->position.y, 0.0f);
-		//float size = 16;
+
 		float size = turret_size * gs_min(1.0, t->turret_time_since_spawn / TURRET_ANIMATION_SPAWN_TIME);
 		gs_mat4 model = gs_mat4_mul_list(2, translation, gs_mat4_scale(size, size, 0));
 
@@ -1047,9 +922,8 @@ void draw_entities(game_data_t* gd, gs_command_buffer_t* gcb)
 		flash = o->flash;
 		tex = circle_16px;
 
-		//gs_mat4 rot = gs_mat4_rotate(t->angle, 0, 0, 1);
 		gs_mat4 translation = gs_mat4_translate(o->position.x, o->position.y, 0.0f);
-		//float size = 16;
+
 		float size = o->radius;
 		gs_mat4 model = gs_mat4_mul_list(2, translation, gs_mat4_scale(size, size, 0));
 
