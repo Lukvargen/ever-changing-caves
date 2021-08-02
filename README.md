@@ -2,6 +2,9 @@
 a roguelike top down shooter made in C using [gunslinger](https://github.com/MrFrenik/gunslinger)
 
 play here: https://lukvargen.github.io/ever-changing-caves-game/
+
+itch page: https://lukvargen.itch.io/ever-changing-caves
+
 controls: WASD move | shoot with left mouse button
 
 
