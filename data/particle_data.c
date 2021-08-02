@@ -1,5 +1,3 @@
-#ifndef __PARTICLE_DATA__
-#define __PARTICLE_DATA__
 
 // Vertex data for quad
 float quad_v_data[] = {
@@ -50,17 +48,4 @@ GS_VERSION_STR
 "       color.a = 0.0;\n"
 "   }\n"
 "   frag_color = color;\n"
-//"   frag_color = vec4(0.0,0.0,0.0,1.0);\n"
-//"   frag_color.r = 1.0;\n"
 "}";
-
-#endif
-
-/*
-"   frag_color = u_color;\n"
-"   frag_color.a = texture(u_tex, uv).a;\n"
-"   if (texture(u_tex, uv).a == 1.0) {\n"
-"       frag_color.r = 1.0;\n"
-"   }\n"
-"   frag_color.b = 1.0;\n"
-*/

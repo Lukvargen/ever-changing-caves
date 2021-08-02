@@ -1492,7 +1492,7 @@ gs_app_desc_t gs_main(int32_t argc, char** argv)
 {
 	double width = RESOLUTION_X;
 	double height = RESOLUTION_Y;
-#ifdef GS_PLATFORM_IMPL_EMSCRIPTEN
+#ifdef GS_PLATFORM_WEB
 	emscripten_get_element_css_size("#canvas", &width, &height);
 #endif
 	return (gs_app_desc_t) {

@@ -326,18 +326,33 @@ void draw_game(game_data_t* gd)
 
 void init_tiles(game_data_t* gd)
 {
+	//int tile_i_data[] = {
+	//	0, 3, 2,
+	//	0, 1, 3
+	//};
+	
+	// calculate indices
+	for (int i = 0; i < TILES_SIZE_X * TILES_SIZE_Y; i++) {
+		int i_value = i*4;
+		int index = i*6;
+		tile_i_data[index+0] = i_value+0;
+		tile_i_data[index+1] = i_value+3;
+		tile_i_data[index+2] = i_value+2;
+
+		tile_i_data[index+3] = i_value+0;
+		tile_i_data[index+4] = i_value+1;
+		tile_i_data[index+5] = i_value+3;
+	}
+	
+
+
 	gd->tile_vbo = gs_graphics_vertex_buffer_create(
 		&(gs_graphics_vertex_buffer_desc_t) {
 			.data = tile_v_data,
-			.size = sizeof(tile_v_data)
+			.size = sizeof(tile_v_data),
+			.usage = GS_GRAPHICS_BUFFER_USAGE_DYNAMIC // to update the color of the tiles
 		}
 	);
-	// vertex_buffer / index_buffer request update
-	// skulle kunna sätta ihop hörnen och lägga till color attribute som en mix av topleft topright bottomleft bottomright
-	// blir det ens snyggt med gradient?
-	// lika bra att göra ändå för att få det till en drawcall...
-
-
 	
 	gd->tile_ibo = gs_graphics_index_buffer_create(
 		&(gs_graphics_index_buffer_desc_t) {
@@ -357,12 +372,14 @@ void init_tiles(game_data_t* gd)
 		}
 	);
 
+	/*
 	gd->u_tile_color = gs_graphics_uniform_create(
 		&(gs_graphics_uniform_desc_t) {
 			.name = "u_color",
 			.layout = &(gs_graphics_uniform_layout_desc_t){.type = GS_GRAPHICS_UNIFORM_VEC3}
 		}
 	);
+	*/
 	gd->u_tile_model = gs_graphics_uniform_create(
 		&(gs_graphics_uniform_desc_t) {
 			.name = "u_model",
@@ -383,9 +400,10 @@ void init_tiles(game_data_t* gd)
 			},
 			.layout = {
 				.attrs = (gs_graphics_vertex_attribute_desc_t[]) {
-					{.format = GS_GRAPHICS_VERTEX_ATTRIBUTE_FLOAT2, .name = "a_pos"}
+					{.format = GS_GRAPHICS_VERTEX_ATTRIBUTE_FLOAT2, .name = "a_pos"},
+					{.format = GS_GRAPHICS_VERTEX_ATTRIBUTE_FLOAT3, .name = "a_color"}
 				},
-				.size = 1 * sizeof(gs_graphics_vertex_attribute_desc_t)
+				.size = 2 * sizeof(gs_graphics_vertex_attribute_desc_t)
 			}
 		}
 	);
@@ -646,13 +664,13 @@ void init_framebuffer(game_data_t* gd)
 
 void draw_tiles(game_data_t* gd, gs_command_buffer_t* gcb)
 {
-	gs_vec3 t_color = gs_v3(1.f, 0.1f, 0.1f);
+	//gs_vec3 t_color = gs_v3(1.f, 0.1f, 0.1f);
 	gs_mat4 model = gs_mat4_identity();
 	model = gs_mat4_scale(TILE_SIZE, TILE_SIZE, 0.0f);
 	
 
 	gs_graphics_bind_uniform_desc_t uniforms[] = {
-		(gs_graphics_bind_uniform_desc_t){.uniform = gd->u_tile_color, .data = &t_color},
+		//(gs_graphics_bind_uniform_desc_t){.uniform = gd->u_tile_color, .data = &t_color},
 		(gs_graphics_bind_uniform_desc_t){.uniform = gd->u_tile_model, .data = &model},
 		(gs_graphics_bind_uniform_desc_t){.uniform = gd->u_tile_projection, .data = &gd->projection}
 	};
@@ -663,10 +681,8 @@ void draw_tiles(game_data_t* gd, gs_command_buffer_t* gcb)
 		.uniforms = {.desc = uniforms, .size = sizeof(uniforms)}
 	};
 	
-	gs_graphics_bind_pipeline(gcb, gd->tile_pip);
-	// TODO add batch rendering
 
-	gs_vec3 wall_color = {43/255.0, 22/255.0, 60/255.0};//{33/255.0, 11/255.0, 44/255.0};
+	gs_vec3 wall_color = {43/255.0, 22/255.0, 60/255.0};
 	gs_vec3 floor_color = {216/255.0, 180/255.0, 226/255.0};
 	gs_vec3 col;
 	for (int x = 0; x < TILES_SIZE_X; x++) {
@@ -680,16 +696,27 @@ void draw_tiles(game_data_t* gd, gs_command_buffer_t* gcb)
 				col = wall_color;
 			} else col = floor_color;
 			
-			t_color = gs_vec3_scale(col, tile_value);
-			gs_mat4 scale = gs_mat4_scale(TILE_SIZE, TILE_SIZE, 0.0f);
-			gs_mat4 translation = gs_mat4_translate(x_pos, y_pos, 0.0f);
-			model = gs_mat4_mul(translation, scale);
+			gs_vec3 t_color = gs_vec3_scale(col, tile_value);
 
-			gs_graphics_apply_bindings(gcb, &binds);
-			gs_graphics_draw(gcb, &(gs_graphics_draw_desc_t){.start = 0, .count = 6});
-
+			tile_v_data[4*(x + y*TILES_SIZE_X)+0] = (tile_vertex_data_t){.position=gs_v2(x+0,y+0), .color=t_color}; // top left
+			tile_v_data[4*(x + y*TILES_SIZE_X)+1] = (tile_vertex_data_t){.position=gs_v2(x+1,y+0), .color=t_color}; // top right
+			tile_v_data[4*(x + y*TILES_SIZE_X)+2] = (tile_vertex_data_t){.position=gs_v2(x+0,y+1), .color=t_color}; // bottom left
+			tile_v_data[4*(x + y*TILES_SIZE_X)+3] = (tile_vertex_data_t){.position=gs_v2(x+1,y+1), .color=t_color}; // bottom right
 		}
 	}
+	gs_graphics_bind_pipeline(gcb, gd->tile_pip);
+	gs_graphics_vertex_buffer_request_update(gcb, gd->tile_vbo, &(gs_graphics_vertex_buffer_desc_t){
+		.data = tile_v_data,
+		.size = sizeof(tile_v_data),
+		.usage = GS_GRAPHICS_BUFFER_USAGE_DYNAMIC,
+		.update = {
+			.type = GS_GRAPHICS_BUFFER_UPDATE_SUBDATA,
+			.offset = 0
+		}
+	});
+	gs_graphics_apply_bindings(gcb, &binds);
+	gs_graphics_draw(gcb, &(gs_graphics_draw_desc_t){.start = 0, .count = TILES_SIZE_X*TILES_SIZE_Y*6});
+
 }
 
 void draw_particles(game_data_t* gd, gs_command_buffer_t* gcb)

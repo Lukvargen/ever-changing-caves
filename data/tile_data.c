@@ -1,18 +1,12 @@
-#ifndef __TILE_DATA__
-#define __TILE_DATA__
+typedef struct tile_vertex_data_t
+{
+    gs_vec2 position;
+    gs_vec3 color;
+} tile_vertex_data_t;
 
-// Vertex data for quad
-float tile_v_data[] = {
-    0.0f, 0.0f, // Top Left
-    1.0f, 0.0f, // Top Right
-    0.0f, 1.0f, // Bottom Left
-    1.0f, 1.0f  // Bottom Right
-};
+tile_vertex_data_t tile_v_data[TILES_SIZE_X*TILES_SIZE_Y*4];
 
-int tile_i_data[] = {
-    0, 3, 2,
-    0, 1, 3
-};
+int tile_i_data[TILES_SIZE_X*TILES_SIZE_Y*6];
 
 #ifdef GS_PLATFORM_WEB
     #define GS_VERSION_STR "#version 300 es\n"
@@ -23,26 +17,24 @@ int tile_i_data[] = {
 const char* tile_v_src =
 GS_VERSION_STR
 "layout(location = 0) in vec2 a_pos;\n"
+"layout(location = 1) in vec3 a_color;\n"
 "precision mediump float;\n"
 "uniform mat4 u_model;\n"
 "uniform mat4 u_projection;\n"
-"out vec2 uv;\n"
+"out vec3 color;\n"
 "void main()\n"
 "{\n"
 "   gl_Position = u_projection * u_model * vec4(a_pos, 0.0, 1.0);\n"
-"   uv = a_pos;\n"
+"   color = a_color;\n"
 "}";
 
 const char* tile_f_src =
 GS_VERSION_STR
 "precision mediump float;\n"
-"uniform vec3 u_color;\n"
-"in vec2 uv;\n"
+"in vec3 color;\n"
 "out vec4 frag_color;\n"
 "void main()\n"
 "{\n"
-//"   frag_color = vec4(uv.x, uv.y, 1.0, 1.0);\n"
-"   frag_color = vec4(u_color, 1.0);\n"
+"   frag_color = vec4(color, 1.0);\n"
 "}";
 
-#endif

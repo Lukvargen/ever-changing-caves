@@ -1,5 +1,3 @@
-#ifndef __SCREEN_QUAD_DATA__
-#define __SCREEN_QUAD_DATA__
 
 // Vertex data for quad
 float screen_v_data[] = {
@@ -7,12 +5,6 @@ float screen_v_data[] = {
      1.0f, -1.0f,  1.0f, 0.0f,  // Top Right 
     -1.0f,  1.0f,  0.0f, 1.0f,  // Bottom Left
      1.0f,  1.0f,  1.0f, 1.0f   // Bottom Right
-    /*
-    0.0f, 0.0f, // Top Left
-    1.0f, 0.0f, // Top Right
-    0.0f, 1.0f, // Bottom Left
-    1.0f, 1.0f  // Bottom Right
-    */
 };
 
 int screen_i_data[] = {
@@ -52,19 +44,7 @@ GS_VERSION_STR
 "uniform vec2 u_res;\n"
 "in vec2 uv;\n"
 "out vec4 frag_color;\n"
-/*
-"const float offsets[9][2] = {\n"
-"   {-1, 1},\n"
-"   {-1, 1},\n"
-"   {-1, 1},\n"
-"   {-1, 1},\n"
-"   {-1, 1},\n"
-"   {-1, 1},\n"
-"   {-1, 1},\n"
-"   {-1, 1},\n"
-"   {-1, 1},\n"
-"};\n"
-*/
+
 "float vignette(vec2 _uv){\n"
 "   _uv *= 1.0 - _uv.xy;\n"
 "   float vignette = _uv.x * _uv.y * 15.0;\n"
@@ -73,7 +53,6 @@ GS_VERSION_STR
 
 "void main()\n"
 "{\n"
-//"   frag_color = vec4(uv.x, uv.y, 1.0, 1.0);\n"
 "   vec2 text_uv = uv;\n"
 "   vec4 color = texture(u_tex, uv);\n"
 "   text_uv = ceil(uv*u_res)/u_res;\n" // verkar som texturen blir upscalad / loopar inte igenom pixlar på bilden utan på alla pixlar som den tar upp på skärmen
@@ -102,4 +81,3 @@ GS_VERSION_STR
 "   frag_color = color;\n"
 "}";
 
-#endif
