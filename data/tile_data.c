@@ -1,12 +1,8 @@
-typedef struct tile_vertex_data_t
-{
-    gs_vec2 position;
-    gs_vec3 color;
-} tile_vertex_data_t;
 
-tile_vertex_data_t tile_v_data[TILES_SIZE_X*TILES_SIZE_Y*4];
+float tile_v_positions[2*TILES_SIZE_X*TILES_SIZE_Y*4];
+float tile_v_colors[3*TILES_SIZE_X*TILES_SIZE_Y*4];
 
-int tile_i_data[TILES_SIZE_X*TILES_SIZE_Y*6];
+uint16_t tile_i_data[TILES_SIZE_X*TILES_SIZE_Y*6];
 
 #ifdef GS_PLATFORM_WEB
     #define GS_VERSION_STR "#version 300 es\n"
