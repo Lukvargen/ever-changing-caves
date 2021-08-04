@@ -13,6 +13,9 @@ gs_asset_texture_t circle_16px;
 gs_asset_texture_t turret_png;
 gs_asset_texture_t turret_barrel_png;
 gs_asset_texture_t worm_png;
+gs_asset_texture_t worm_boss_png;
+gs_asset_texture_t worm_boss_head_png;
+gs_asset_texture_t worm_boss_tail_png;
 
 gs_asset_font_t font_large;
 gs_asset_font_t font_medium;
@@ -37,11 +40,38 @@ void graphics_init(game_data_t* gd)
     gd->gcb = gs_command_buffer_new();
 	gd->gsi = gs_immediate_draw_new();
 
-	//gs_graphics_texture_desc_t desc = {0}
-	gs_asset_texture_load_from_file("./assets/Circle16.png", &circle_16px, NULL, true, false);
-	gs_asset_texture_load_from_file("./assets/Turret.png", &turret_png, NULL, true, false);
-	gs_asset_texture_load_from_file("./assets/TurretBarrel.png", &turret_barrel_png, NULL, true, false);
-	gs_asset_texture_load_from_file("./assets/Worm.png", &worm_png, NULL, true, false);
+	gs_graphics_texture_desc_t desc = (gs_graphics_texture_desc_t){
+		.format = GS_GRAPHICS_TEXTURE_FORMAT_RGBA8,
+		.min_filter = GS_GRAPHICS_TEXTURE_FILTER_NEAREST,
+		.mag_filter = GS_GRAPHICS_TEXTURE_FILTER_NEAREST,
+		.wrap_s = GS_GRAPHICS_TEXTURE_WRAP_REPEAT,
+		.wrap_t = GS_GRAPHICS_TEXTURE_WRAP_REPEAT
+	};
+	gs_asset_texture_load_from_file("./assets/Circle16.png", &circle_16px, &desc, true, false);
+	gs_asset_texture_load_from_file("./assets/Turret.png", &turret_png, &desc, true, false);
+	gs_asset_texture_load_from_file("./assets/TurretBarrel.png", &turret_barrel_png, &desc, true, false);
+	gs_asset_texture_load_from_file("./assets/Worm.png", &worm_png, &desc, true, false);
+	
+	gs_asset_texture_load_from_file("./assets/WormBoss.png", &worm_boss_png, &desc, true, false);
+	gs_asset_texture_load_from_file("./assets/WormBossHead.png", &worm_boss_head_png, &desc, true, false);
+	gs_asset_texture_load_from_file("./assets/WormBossTail.png", &worm_boss_tail_png, &desc, true, false);
+
+	/*gs_asset_texture_load_from_file("./assets/WormBoss.png", &worm_boss_png, &(gs_graphics_texture_desc_t){
+		.format = GS_GRAPHICS_TEXTURE_FORMAT_RGBA8,
+		.min_filter = GS_GRAPHICS_TEXTURE_FILTER_LINEAR,
+		.mag_filter = GS_GRAPHICS_TEXTURE_FILTER_LINEAR,
+		.wrap_s = GS_GRAPHICS_TEXTURE_WRAP_REPEAT,
+		.wrap_t = GS_GRAPHICS_TEXTURE_WRAP_REPEAT
+	}, true, false);*/
+	/*
+	t->desc.format = GS_GRAPHICS_TEXTURE_FORMAT_RGBA8;
+	t->desc.min_filter = GS_GRAPHICS_TEXTURE_FILTER_LINEAR;
+	t->desc.mag_filter = GS_GRAPHICS_TEXTURE_FILTER_LINEAR;
+	t->desc.wrap_s = GS_GRAPHICS_TEXTURE_WRAP_REPEAT;
+	t->desc.wrap_t = GS_GRAPHICS_TEXTURE_WRAP_REPEAT;
+	*/
+
+
 	gs_asset_font_load_from_file("./assets/joystix monospace.ttf", &font_large, 32);
 	gs_asset_font_load_from_file("./assets/joystix monospace.ttf", &font_medium, 16);
 	gs_asset_font_load_from_file("./assets/fff-forward.regular.ttf", &font_small, 12);
@@ -75,7 +105,7 @@ void draw_game(game_data_t* gd)
 
 	float diff_x = ws.x / RESOLUTION_X;
 	float diff_y = ws.y / RESOLUTION_Y;
-	gd->projection = gs_mat4_ortho(0, RESOLUTION_X, RESOLUTION_Y, 0, 0, 100); // hur stor del av världen som ska tas med
+	gd->projection = gs_mat4_ortho(0, RESOLUTION_X, RESOLUTION_Y, 0, -100, 100);
 	gsi_ortho(gsi, 0, RESOLUTION_X, RESOLUTION_Y, 0, 0, 100);
 
 
@@ -119,10 +149,6 @@ void draw_game(game_data_t* gd)
 	
 	gsi_defaults(gsi);
 
-	
-	
-	
-	
 	if (gd->shop.visible) {
 		int center_x = RESOLUTION_X / 2;
 		int upgrade_panel_size_x = RESOLUTION_X/4;
@@ -672,8 +698,6 @@ void init_entities(game_data_t* gd)
 	);
 
 
-	
-
 	gd->entity_vbo = gs_graphics_vertex_buffer_create(
 		&(gs_graphics_vertex_buffer_desc_t) {
 			.data = quad_v_data,
@@ -702,13 +726,19 @@ void init_entities(game_data_t* gd)
         &(gs_graphics_pipeline_desc_t) {
             .raster = {
                 .shader = gd->entity_shader,
-                .index_buffer_element_size = sizeof(uint32_t) 
+                .index_buffer_element_size = sizeof(uint32_t)
+				
             },
 			.blend = {
 				.func = GS_GRAPHICS_BLEND_EQUATION_ADD,
 				.src = GS_GRAPHICS_BLEND_MODE_SRC_ALPHA,
 				.dst = GS_GRAPHICS_BLEND_MODE_ONE_MINUS_SRC_ALPHA
 			},
+			.depth = {
+				.func = GS_GRAPHICS_DEPTH_FUNC_LESS
+			},
+			
+			
             .layout = {
                 .attrs = (gs_graphics_vertex_attribute_desc_t[]){
                     {.format = GS_GRAPHICS_VERTEX_ATTRIBUTE_FLOAT2, .name = "a_pos"},
@@ -718,6 +748,7 @@ void init_entities(game_data_t* gd)
             }
         }
     );
+	
 }
 
 void init_framebuffer(game_data_t* gd)
@@ -737,13 +768,13 @@ void init_framebuffer(game_data_t* gd)
 			.render_target = true
 		}
 	);
+
 	// construct render pass
 	gd->rp = gs_graphics_render_pass_create(
 		&(gs_graphics_render_pass_desc_t) {
 			.fbo = gd->fbo,
 			.color = &gd->rt, // color buffer array to bind to frame buffer
 			.color_size = sizeof(gd->rt)
-
 		}
 	);
 }
@@ -820,6 +851,22 @@ void draw_entities(game_data_t* gd, gs_command_buffer_t* gcb)
 	};
 	gs_graphics_bind_pipeline(gcb, gd->entity_pip);
 
+	// Projectiles
+	tex = circle_16px;
+	for (int i = 0; i < gs_dyn_array_size(gd->projecitles); i++) {
+		projectile_t* p = &gd->projecitles[i];
+
+		color = p->color;
+		flash = 0;
+		gs_mat4 translation = gs_mat4_translate(p->position.x, p->position.y, 0.0f);
+		float size = 2 * p->radius * (1-(p->life_time / p->max_life_time));
+		gs_mat4 model = gs_mat4_mul(translation, gs_mat4_scale(size, size, 0));
+		mvp = gs_mat4_mul(gd->projection, model);
+
+		gs_graphics_apply_bindings(gcb, &binds);
+		gs_graphics_draw(gcb, &(gs_graphics_draw_desc_t){.start = 0, .count = 6});
+	}
+
 	// Player
 	{
 		color = gs_v4(50/255.0, 150/255.0, 50/255.0, 1.0);
@@ -864,17 +911,29 @@ void draw_entities(game_data_t* gd, gs_command_buffer_t* gcb)
 	tex = worm_png;
 	for (int i = 0; i < gs_dyn_array_size(gd->worms); i++) {
 		entity_t* head = gd->worms[i];
+		if (!head->worm_is_head)
+			continue;
 		gs_vec2 pos = head->position;
 
+		if (head->worm_type == WORM_TYPE_BOSS)
+			tex = worm_boss_head_png;
+		else tex = worm_png;
 		
 		color = head->color;
 		flash = head->flash;
-		gs_mat4 translation = gs_mat4_translate(pos.x, pos.y, 0.0f);
+		gs_mat4 translation = gs_mat4_translate(pos.x, pos.y, 10);
 		float size = head->radius * 2;
-		gs_mat4 model = gs_mat4_mul(translation, gs_mat4_scale(size, size, 0));
-		mvp = gs_mat4_mul(gd->projection, model);
 
-
+		
+		float angle = atan2f(head->velocity.y, head->velocity.x);
+		gs_mat4 rotation = gs_mat4_rotatev(angle, gs_v3(0,0,1));
+		mvp = gs_mat4_mul_list(4,
+			gd->projection,
+			translation,
+			rotation,
+			gs_mat4_scale(size, size, 0)
+		);
+		
 		float alpha = 1.0;
 		float dead_timer = head->dead_timer;
 		if (head->dead) {
@@ -886,6 +945,8 @@ void draw_entities(game_data_t* gd, gs_command_buffer_t* gcb)
 		gs_graphics_apply_bindings(gcb, &binds);
 		gs_graphics_draw(gcb, &(gs_graphics_draw_desc_t){.start = 0, .count = 6});
 
+		if (head->worm_type == WORM_TYPE_BOSS)
+			tex = worm_boss_png;
 		entity_t* parent = head;
 		int i = 0;
 		while (parent->worm_segment) {
@@ -899,10 +960,20 @@ void draw_entities(game_data_t* gd, gs_command_buffer_t* gcb)
 			color.x -= 0.04 * i;
 			color.w = alpha;
 
-			gs_mat4 translation = gs_mat4_translate(pos.x, pos.y, 0.0f);
+			gs_mat4 translation = gs_mat4_translate(pos.x, pos.y, -i*0.1);
 			size = (child->radius*2);
-			gs_mat4 model = gs_mat4_mul(translation, gs_mat4_scale(size, size, 0));
-			mvp = gs_mat4_mul(gd->projection, model);
+
+			float angle = atan2f(parent->position.y - child->position.y, parent->position.x - child->position.x);
+			gs_mat4 rotation = gs_mat4_rotatev(angle, gs_v3(0,0,1));
+			mvp = gs_mat4_mul_list(4,
+				gd->projection,
+				translation,
+				rotation,
+				gs_mat4_scale(size, size, 0)
+			);
+			if (!child->worm_segment) {
+				tex = worm_boss_tail_png;
+			}
 
 			gs_graphics_apply_bindings(gcb, &binds);
 			gs_graphics_draw(gcb, &(gs_graphics_draw_desc_t){.start = 0, .count = 6});
@@ -913,21 +984,7 @@ void draw_entities(game_data_t* gd, gs_command_buffer_t* gcb)
 	}
 
 	
-	// Projectiles
-	tex = circle_16px;
-	for (int i = 0; i < gs_dyn_array_size(gd->projecitles); i++) {
-		projectile_t* p = &gd->projecitles[i];
-
-		color = gs_v4(50/255.0, 50/255.0, 50/255.0, 1.0);
-		flash = 0;
-		gs_mat4 translation = gs_mat4_translate(p->position.x, p->position.y, 0.0f);
-		float size = 2 * p->radius * (1-(p->life_time / p->max_life_time));
-		gs_mat4 model = gs_mat4_mul(translation, gs_mat4_scale(size, size, 0));
-		mvp = gs_mat4_mul(gd->projection, model);
-
-		gs_graphics_apply_bindings(gcb, &binds);
-		gs_graphics_draw(gcb, &(gs_graphics_draw_desc_t){.start = 0, .count = 6});
-	}
+	
 
 	// turrets
 	tex = turret_png;

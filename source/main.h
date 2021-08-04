@@ -150,7 +150,8 @@ typedef enum turret_type_t
 typedef enum worm_type_t
 {
 	WORM_TYPE_NORMAL,
-	WORM_TYPE_SINUS
+	WORM_TYPE_SINUS,
+	WORM_TYPE_BOSS
 } worm_type_t;
 
 typedef struct entity_t
@@ -188,8 +189,12 @@ typedef struct entity_t
 		struct // worm
 		{
 			struct entity_t* worm_segment;
+			struct entity_t* worm_parent;
 			particle_emitter_t* worm_particle_emitter;
 			worm_type_t worm_type;
+			float worm_shoot_timer;
+			struct entity_t* worm_segment_head;
+			bool worm_is_head;
 		};
 		struct // turret
 		{
@@ -227,6 +232,7 @@ typedef struct laser_t
 
 typedef struct projectile_t
 {
+	gs_vec4 color;
 	gs_vec2 position;
 	gs_vec2 velocity;
 	float accell;

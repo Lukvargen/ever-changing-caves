@@ -48,7 +48,6 @@ gs_vec2 gs_vec2_truncate(gs_vec2 v, float max_length);
 bool is_colliding(gs_vec2 p1, gs_vec2 p2, float r1, float r2);
 gs_vec2 get_world_mouse_pos();
 gs_vec2 steer(gs_vec2 from_pos, gs_vec2 target_pos, gs_vec2 velocity, float max_velocity, float max_force, float max_speed);
-float randf();
 void remove_entity(entity_t* arr[], int* arr_length, int* i);
 void entity_take_dmg(game_data_t* gd, entity_t* entity, int dmg, gs_vec2 hit_pos, gs_vec2 knock_dir);
 
@@ -95,9 +94,11 @@ void init()
 
 	gd->shop.all_upgrades = NULL;
 
-	next_wave(gd);
+	
+	//next_wave(gd);
 	graphics_init(gd);
 	spawn_player(gd);
+	restart_game(gd);
 	gd->crystals_currency = 0;
 	shop_init_all_upgrades(gd);
 	//shop_show(gd);
@@ -207,9 +208,12 @@ void restart_game(game_data_t* gd)
 	gs_dyn_array_clear(gd->shop.all_upgrades);
 	shop_init_all_upgrades(gd);
 	spawn_player(gd);
+	gd->player.hp = 10;
 	gd->crystals_currency = 0;
 	gd->wave = 0;
-	next_wave(gd);
+	//gd->player.player_laser_lvl = 2;
+	//next_wave(gd);
+	spawn_worm(gd, WORM_TYPE_BOSS, 15, gs_v2(RESOLUTION_X/2 + 128, RESOLUTION_Y/2), 16);
 
 }
 
@@ -302,7 +306,7 @@ void update_player(game_data_t* gd, float delta)
 	int tile_x = pos->x/TILE_SIZE;
 	int tile_y = pos->y/TILE_SIZE;
 	if (is_tile_solid(gd, tile_x, tile_y)) {
-		entity_take_dmg(gd, p, p->max_hp * 0.1, p->position, gs_v2(1,0)); //gs_v2(randf(), randf()));
+		entity_take_dmg(gd, p, p->max_hp * 0.1, p->position, gs_v2(1,0)); //gs_v2(stb_frand(), stb_frand()));
 		
 		explode_tiles(gd, tile_x, tile_y, 3);
 	} else {
@@ -414,12 +418,13 @@ void spawn_laser(game_data_t* gd, int dmg, gs_vec2 pos, float radius, gs_color_t
 			break;
 	}
 	int targets_size = gs_dyn_array_size(targets); 
+	
 	if (targets_size > 1) {
-		entity_take_dmg(gd, targets[targets_size-1], dmg, targets[targets_size-1]->position, gs_v2(randf()*2-1, randf()*2-1));
+		entity_take_dmg(gd, targets[targets_size-1], dmg, targets[targets_size-1]->position, gs_v2(stb_frand()*2-1, stb_frand()*2-1));
 		for (int i = 0; i < targets_size-1; i++) {
 			entity_t* enemy1 = targets[i];
 			entity_t* enemy2 = targets[i+1];
-			entity_take_dmg(gd, enemy1, dmg, enemy1->position, gs_v2(randf()*2-1, randf()*2-1));
+			entity_take_dmg(gd, enemy1, dmg, enemy1->position, gs_v2(stb_frand()*2-1, stb_frand()*2-1));
 			gs_dyn_array_push(laser.points, enemy1->position);
 
 			gs_vec2 pos = enemy1->position;
@@ -429,8 +434,8 @@ void spawn_laser(game_data_t* gd, int dmg, gs_vec2 pos, float radius, gs_color_t
 				float dist = gs_vec2_len(diff);
 
 				float angle = atan2f(diff.y, diff.x);
-				diff.x = cos(angle + (randf()-0.5)*3.14) * dist * (s/4.f);
-				diff.y = sin(angle + (randf()-0.5)*3.14) * dist * (s/4.f);
+				diff.x = cos(angle + (stb_frand()-0.5)*3.14) * dist * (s/4.f);
+				diff.y = sin(angle + (stb_frand()-0.5)*3.14) * dist * (s/4.f);
 				pos.x = pos.x + diff.x;
 				pos.y = pos.y + diff.y;
 				gs_dyn_array_push(laser.points, pos);
@@ -464,6 +469,9 @@ void update_lasers(game_data_t* gd, float delta)
 
 void spawn_projectile(game_data_t* gd, projectile_t* projectile)
 {
+	if (projectile->color.w == 0) {
+		projectile->color = gs_v4(50/255.0, 50/255.0, 50/255.0, 1.0);
+	}
 	gs_dyn_array_push(gd->projecitles, *projectile);
 }
 
@@ -535,7 +543,7 @@ void update_projectiles(game_data_t* gd, float delta)
 						
 						spawn_laser(gd, 1, enemy->position, 128, gs_color(125, 91, 166, 255), gd->player.player_laser_lvl+1);
 
-						if (randf() <= gd->player.player_projectile_reflect_chance) {
+						if (stb_frand() <= gd->player.player_projectile_reflect_chance) {
 							p->entity_ignore = enemy;
 							for (int i = 0; i < gd->player.player_projectile_reflect_amount; i++) {
 
@@ -554,8 +562,8 @@ void update_projectiles(game_data_t* gd, float delta)
 								int vel_length = gs_vec2_len(p->velocity);
 								
 								float angle = atan2f(p->velocity.y, p->velocity.x);
-								new_projectile.velocity.x = cos(angle + (randf()-0.5)*3.14) * vel_length;
-								new_projectile.velocity.y = sin(angle + (randf()-0.5)*3.14) * vel_length;
+								new_projectile.velocity.x = cos(angle + (stb_frand()-0.5)*3.14) * vel_length;
+								new_projectile.velocity.y = sin(angle + (stb_frand()-0.5)*3.14) * vel_length;
 								p_size++;
 								spawn_projectile(gd, &new_projectile);
 							}
@@ -584,47 +592,51 @@ void update_projectiles(game_data_t* gd, float delta)
 void spawn_worm(game_data_t* gd, worm_type_t type, int segments, gs_vec2 pos, float radius)
 {
 	gs_vec4 color = gs_v4(0.7, 0.2, 0.2, 1.0);
+	gs_vec4 particle_color = color;
+	particle_color.w = 0.5f;
+
+
 	if (type == WORM_TYPE_SINUS) {
 		color = gs_v4(0.1, 0.4, 0.2, 1.0);
-	}
+	} else if (type == WORM_TYPE_BOSS) {
+		color = gs_v4(1, 0.6, 0.7, 1.0);
+	} 
 	
 	entity_t* head = malloc(sizeof(entity_t));
 	int hp = 3 * pow(1.2, gd->wave);
 	int dmg = 1 * pow(1.15, gd->wave);
 	*head = (entity_t){
+		.worm_is_head = true,
 		.hp = hp,
 		.position = pos,
 		.radius = radius,
 		.color = color,
+		.type = ENTITY_TYPE_WORM,
 		.worm_type = type,
 		.dmg = dmg,
 	};
-	gs_vec4 particle_color = color;
-	particle_color.w = 0.5f;
-
-	head->worm_particle_emitter = spawn_particle_emitter(gd, &(particle_emitter_desc_t){
-		.particle_amount 	= 10,
-		.particle_color 	= particle_color,
-		.particle_lifetime 	= 1.0f,
-		.particle_shink_out = true,
-		.particle_size 		= gs_v2(radius,radius),
-		.particle_velocity 	= gs_v2(20.f, 0.f),
-		.position 			= pos,
-		.explode = false,
-		.rand_rotation_range = 3.14*2,
-		.rand_velocity_range = 0.5
-	});
 	
 	entity_t* parent = head;
 	for (int i = 0; i < segments; i++) {
 		entity_t* segment = malloc(sizeof(entity_t));
-		segment->hp = 1;
+		*segment = (entity_t){0};
+		segment->worm_parent = parent;
+		segment->hp = hp;
+		segment->dmg = dmg;
 		segment->position = pos;
-		float percent = (i+1.0) / (segments+1.0);
+		segment->worm_segment_head = head;
+		segment->color = head->color;
+		segment->type = head->type;
+		segment->worm_type = head->worm_type;
+		int size_mult = 1;
+		if (head->worm_type == WORM_TYPE_BOSS)
+			size_mult = 3;
+		float percent = (i+1.0) / (segments*size_mult+1.0);
 		segment->radius = head->radius * (1-percent);
 		segment->worm_particle_emitter = NULL;
 		segment->worm_segment = NULL;
-
+		if (type == WORM_TYPE_BOSS)
+			gs_dyn_array_push(gd->worms, segment); // enables the player to hit segments
 		parent->worm_segment = segment;
 		parent = segment;
 	}
@@ -636,18 +648,18 @@ void update_worms(game_data_t* gd, float delta)
 	int worms_size = gs_dyn_array_size(gd->worms);
 	for (int i = 0; i < worms_size; i++) {
 		entity_t* head = gd->worms[i];
+		
+		
 
-		head->time_alive += delta;
-
-		head->flash -= 5*delta;
-		if (head->flash < 0)
-			head->flash = 0.f;
+		
 
 		// .5 secounds delay after dead for death animation
 		if (head->dead) {
 			head->dead_timer += delta;
-			head->worm_particle_emitter->emitting = false;
-			if (head->dead_timer > 0.5f) {
+			//head->worm_particle_emitter->emitting = false;
+			float death_timer_max = 0.5f;
+			if (head->worm_type == WORM_TYPE_BOSS) death_timer_max = 0.1;
+			if (head->dead_timer > death_timer_max) {
 				spawn_crystals(gd, head->position, 5 * pow(1.05, gd->wave-1));
 
 				gd->worms[i] = gd->worms[worms_size-1];
@@ -659,6 +671,22 @@ void update_worms(game_data_t* gd, float delta)
 				continue;
 			}
 		}
+		if (!head->worm_is_head) {
+			if (head->worm_type == WORM_TYPE_BOSS) {
+				head->position.x += head->velocity.x * delta;
+				head->position.y += head->velocity.y * delta;
+				head->velocity.x *= 0.95;
+				head->velocity.y *= 0.95;
+			}
+			continue;
+		}
+
+		head->time_alive += delta;
+
+		head->flash -= 5*delta;
+		if (head->flash < 0)
+			head->flash = 0.f;
+
 
 		// add repell to other worms
 		for (int j = 0; j < worms_size; j++) {
@@ -680,29 +708,92 @@ void update_worms(game_data_t* gd, float delta)
 		}
 
 		if (!head->dead) {
-			// speed boost in walls
-			int x = head->position.x / TILE_SIZE;
-			int y = head->position.y / TILE_SIZE;
+			
 			
 			gs_vec2 target_pos = gd->player.position;
-			if (head->worm_type == WORM_TYPE_SINUS) {
+			if (head->worm_type == WORM_TYPE_SINUS || head->worm_type == WORM_TYPE_BOSS) {
 				gs_vec2 diff = gs_vec2_sub(target_pos, head->position);
 				float diff_length = gs_vec2_len(diff);
 				
 				float angle = atan2f(target_pos.y - head->position.y, target_pos.x - head->position.x);
-				
-				float rotation = diff_length / 50;
-				if (rotation > 1.5)
-					rotation = 1.5;
+				float max_rot = 1.5;
+				float length_devisor = 50.f;
+				if (head->worm_type == WORM_TYPE_BOSS) {
+					max_rot = 1;
+					//length_devisor = 100.f;
+				}
+				float rotation = diff_length / length_devisor;
+				if (rotation > max_rot)
+					rotation = max_rot;
 				target_pos.x = head->position.x + cos(angle+sin(head->time_alive*2) * rotation) * diff_length;
 				target_pos.y = head->position.y + sin(angle+sin(head->time_alive*2) * rotation) * diff_length;
 			}
+			
+			float max_velocity = WORM_MAX_VELOCITY;
+			float max_force = WORM_MAX_FORCE;
+			float max_speed = WORM_MAX_SPEED;
+			if (head->worm_type == WORM_TYPE_BOSS) {
+				max_velocity *= 200;
+				max_force = 8;
+				max_speed = 200;
+				gs_vec2 dir = gs_vec2_sub(gd->player.position, head->position);
+				dir = gs_vec2_norm(dir);
+				gs_vec2 face_dir = gs_vec2_norm(head->velocity);
 
-			if (is_tile_solid(gd, x, y)) {
-				head->velocity = steer(head->position, target_pos, head->velocity, WORM_MAX_VELOCITY*2.f, WORM_MAX_FORCE*2.f, WORM_MAX_SPEED*2.f);
+				if (gs_vec2_dot(dir, face_dir) > 0.8) {
+					max_velocity *= 5;
+					max_force = 5;
+					max_speed *= 2.0;
+					
+					head->worm_shoot_timer += delta;
+					if (head->worm_shoot_timer > 0.05) {
+						head->worm_shoot_timer = 0;
+						gs_vec2 spawn_pos = gs_vec2_add(head->position, gs_vec2_scale(face_dir, head->radius*0.8));
+
+						float rand_rot = 2.0*(0.5 - stb_frand()) * 0.1;
+						gs_vec2 shoot_dir = face_dir;
+						
+						shoot_dir.x = face_dir.x * cos(rand_rot) - face_dir.y * sin(rand_rot);
+						shoot_dir.y = face_dir.x * sin(rand_rot) + face_dir.y * cos(rand_rot);
+
+						spawn_projectile(gd, &(projectile_t){
+							.color = gs_v4(0.8, 0.2, 0.3, 1.0),
+							.velocity = gs_v2(shoot_dir.x * 200, shoot_dir.y * 200),
+							.radius = 8,
+							.position = spawn_pos,
+							.max_life_time = 0.3,
+							.go_through_walls = false,
+							.explode_radius = 3,
+							.enemy_created = true,
+							.dmg = head->dmg,
+							.accell = 800,
+							
+							
+							.particle_emitter = spawn_particle_emitter(gd, &(particle_emitter_desc_t){
+								.particle_amount = 8,
+								.particle_color = head->color,
+								.particle_lifetime = 0.05,
+								.particle_shink_out = true,
+								.particle_size = gs_v2(12,12),
+								.position = spawn_pos
+
+							})
+						});
+					}
+				}
+
 			} else {
-				head->velocity = steer(head->position, target_pos, head->velocity, WORM_MAX_VELOCITY, WORM_MAX_FORCE, WORM_MAX_SPEED);
+				// speed boost in walls
+				int x = head->position.x / TILE_SIZE;
+				int y = head->position.y / TILE_SIZE;
+				if (is_tile_solid(gd, x, y)) {
+					max_velocity *= 2;
+					max_force *= 2;
+					max_speed *= 2;
+					
+				}
 			}
+			head->velocity = steer(head->position, target_pos, head->velocity, max_velocity, max_force, max_speed);
 
 			entity_t* player = &gd->player;
 			if (is_colliding(head->position, player->position, head->radius, player->radius)) {
@@ -719,16 +810,21 @@ void update_worms(game_data_t* gd, float delta)
 		head->position.x += head->velocity.x * delta;
 		head->position.y += head->velocity.y * delta;
 
-		head->worm_particle_emitter->position = head->position;
+		//head->worm_particle_emitter->position = head->position;
 
 		// segment follows parent
 		entity_t* parent = head;
 		while (parent->worm_segment) {
 			entity_t* child = parent->worm_segment;
 			gs_vec2 dist = gs_vec2_sub(parent->position, child->position);
-			if (gs_vec2_len(dist) > 2) {
-				child->position.x += dist.x * 10 * delta;
-				child->position.y += dist.y * 10 * delta;
+			gs_vec2 dir = gs_vec2_norm(dist);
+			gs_vec2 target_pos;
+			target_pos.x = parent->position.x - dir.x * child->radius * 0.75;
+			target_pos.y = parent->position.y - dir.y * child->radius * 0.75;
+			
+			if (gs_vec2_len(dist) > parent->radius*0.25) {
+				child->position.x = child->position.x + (target_pos.x - child->position.x) * delta * 10;
+				child->position.y = child->position.y + (target_pos.y - child->position.y) * delta * 10;
 			}
 			parent = child;
 		}
@@ -793,9 +889,9 @@ void update_particle_emitters(game_data_t* gd, float delta)
 						p->life_time = 0.f;
 						p->size = emitter->particle_size;
 						p->velocity = emitter->particle_velocity;
-						float rand_rot = 2.0*(0.5 - randf()) * emitter->rand_rotation_range;
+						float rand_rot = 2.0*(0.5 - stb_frand()) * emitter->rand_rotation_range;
 						
-						float vel_rand_range = 1.0 - (randf() * emitter->rand_velocity_range);
+						float vel_rand_range = 1.0 - (stb_frand() * emitter->rand_velocity_range);
 						float vel_x = p->velocity.x * vel_rand_range;
 						float vel_y = p->velocity.y * vel_rand_range;
 						p->velocity.x = vel_x * cos(rand_rot) - vel_y * sin(rand_rot);
@@ -1035,7 +1131,7 @@ void update_turrets(game_data_t* gd, float delta)
 void spawn_orb(game_data_t* gd, orb_type_t orb_type, gs_vec2 pos)
 {
 	gs_vec2 rand_vel;
-	float rand_angle = 2 * 3.14 * randf();
+	float rand_angle = 2 * 3.14 * stb_frand();
 	rand_vel.x = cos(rand_angle) * 75;
 	rand_vel.y = sin(rand_angle) * 75;
 
@@ -1115,7 +1211,7 @@ void update_orbs(game_data_t* gd, float delta)
 
 		o->charge_timer -= delta;
 		if (o->charge_timer <= 0) {
-			o->charge_timer = randf() * 2 + 1;
+			o->charge_timer = stb_frand() * 2 + 1;
 			gs_vec2 dir = gs_vec2_sub(gd->player.position, o->position);
 			dir = gs_vec2_norm(dir);
 			o->velocity.x = dir.x * 300;
@@ -1213,6 +1309,25 @@ void delete_particle_emitter(particle_emitter_t* p)
 
 void delete_worm(entity_t* worm)
 {
+	if (worm->worm_type == WORM_TYPE_BOSS) {
+		if (worm->worm_parent) {
+			worm->worm_parent->worm_segment = NULL;
+		}
+		if (worm->worm_segment) {
+			entity_t* new_head = worm->worm_segment;
+			new_head->worm_is_head = true;
+			new_head->worm_segment_head = NULL;
+			new_head->worm_parent = NULL;
+			entity_t* child = new_head->worm_segment;
+			while(child) {
+				child->worm_segment_head = new_head;
+				child = child->worm_segment;
+			}
+
+		}
+		free(worm);
+		return;
+	}
 	if (worm->worm_particle_emitter)
 		worm->worm_particle_emitter->should_delete = true;
 	entity_t* next = worm->worm_segment;
@@ -1230,6 +1345,11 @@ void entity_take_dmg(game_data_t* gd, entity_t* entity, int dmg, gs_vec2 hit_pos
 	gs_audio_play_source(gd->hit_sound_hndl, gd->volume);
 
 	entity->hp -= dmg;
+	if (entity->type == ENTITY_TYPE_WORM && entity->worm_type == WORM_TYPE_BOSS) {
+		if (!entity->worm_is_head) {
+			entity->worm_segment_head->flash = 1.0;
+		}
+	}
 	
 	if (entity->hp <= 0) {
 		entity->dead = true;
@@ -1261,7 +1381,7 @@ void entity_take_dmg(game_data_t* gd, entity_t* entity, int dmg, gs_vec2 hit_pos
 void spawn_crystals(game_data_t* gd, gs_vec2 pos, int amount)
 {
 	for (int i = 0; i < amount; i++) {
-		gs_vec2 rand_vel = gs_v2(randf()-0.5, randf()-0.5);
+		gs_vec2 rand_vel = gs_v2(stb_frand()-0.5, stb_frand()-0.5);
 		rand_vel = gs_vec2_norm(rand_vel);
 		rand_vel.x *= 400;
 		rand_vel.y *= 400;
@@ -1327,12 +1447,12 @@ void update_wave_system(game_data_t* gd, float delta)
 				spawn_amount_random = 3;
 			else if (gd->wave >= 2)
 				spawn_amount_random = 2;
-			int spawn_amount = 1 + (int)(randf() * spawn_amount_random);
+			int spawn_amount = 1 + (int)(stb_frand() * spawn_amount_random);
 			if (spawn_amount > enemies_left_to_spawn)
 				spawn_amount = enemies_left_to_spawn;
 			
 			for (int i = 0; i < spawn_amount; i++) {
-				int index = (int)(randf()*enemies_left_to_spawn);
+				int index = (int)(stb_frand()*enemies_left_to_spawn);
 				entity_type_t type = gd->enemies_to_spawn[index];
 				gd->enemies_to_spawn[index] = gd->enemies_to_spawn[enemies_left_to_spawn-1];
 				enemies_left_to_spawn--;
@@ -1340,42 +1460,42 @@ void update_wave_system(game_data_t* gd, float delta)
 				gs_vec2 spawn_pos;
 				switch (type) {
 					case (ENTITY_TYPE_WORM):
-						spawn_pos.x = RESOLUTION_X * randf();
+						spawn_pos.x = RESOLUTION_X * stb_frand();
 						spawn_pos.y = 0;
-						if (randf() > 0.5) {
+						if (stb_frand() > 0.5) {
 							spawn_pos.y = RESOLUTION_Y;
 						}
 						worm_type_t worm_type = WORM_TYPE_NORMAL;
-						if (randf() > 0.5)
+						if (stb_frand() > 0.5)
 							worm_type = WORM_TYPE_SINUS;
 						spawn_worm(gd, worm_type, 4, spawn_pos, 6);
 						break;
 					case (ENTITY_TYPE_TURRET):
-						spawn_pos.x = (RESOLUTION_X-20) * randf() + 20;
-						spawn_pos.y = (RESOLUTION_Y-20) * randf() + 20;
+						spawn_pos.x = (RESOLUTION_X-20) * stb_frand() + 20;
+						spawn_pos.y = (RESOLUTION_Y-20) * stb_frand() + 20;
 						turret_type_t type = TURRET_TYPE_NORMAL;
-						if (randf() >= 0.6) {
+						if (stb_frand() >= 0.6) {
 							type = TURRET_TYPE_SPIN;
 							
 						}
 						spawn_turret(gd, spawn_pos, type);
 						break;
 					case (ENTITY_TYPE_ORB):
-						if (randf() > 0.5) {
-							if (randf() > 0.5) {
+						if (stb_frand() > 0.5) {
+							if (stb_frand() > 0.5) {
 								spawn_pos.x = 20;
-								spawn_pos.y = (RESOLUTION_Y-40) * randf() + 20;
+								spawn_pos.y = (RESOLUTION_Y-40) * stb_frand() + 20;
 							} else {
 								spawn_pos.x = RESOLUTION_X - 20;
-								spawn_pos.y = (RESOLUTION_Y-40) * randf() + 20;
+								spawn_pos.y = (RESOLUTION_Y-40) * stb_frand() + 20;
 							}
 						} else {
-							if (randf() > 0.5) {
+							if (stb_frand() > 0.5) {
 								spawn_pos.y = 20;
-								spawn_pos.x = (RESOLUTION_X-40) * randf() + 20;
+								spawn_pos.x = (RESOLUTION_X-40) * stb_frand() + 20;
 							} else {
 								spawn_pos.y = RESOLUTION_Y - 20;
-								spawn_pos.x = (RESOLUTION_X-40) * randf() + 20;
+								spawn_pos.x = (RESOLUTION_X-40) * stb_frand() + 20;
 							}
 						}
 						int orb_type = stb_rand() % ORB_TYPE_SIZE;
@@ -1478,10 +1598,7 @@ gs_vec2 steer(gs_vec2 from_pos, gs_vec2 target_pos, gs_vec2 velocity, float max_
 	return gs_vec2_truncate(velocity, max_speed);
 }
 
-float randf()  
-{
-	return (float)stb_frand();
-}
+
 
 
 
