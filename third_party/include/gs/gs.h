@@ -1010,9 +1010,9 @@ void gs_util_get_file_extension
         while (*at)
         {
             char c = *at;
-            buffer[ i++ ] = *at++;
+            buffer[i++] = *at++;
         }
-        buffer[ i ] = '\0';
+        buffer[i] = '\0';
     }
 }
 
@@ -4495,6 +4495,19 @@ typedef void (* gs_dropped_files_callback_t)(void*, int32_t count, const char** 
 typedef void (* gs_window_close_callback_t)(void*);
 typedef void (* gs_character_callback_t)(void*, uint32_t code_point);
 
+// Directory
+
+#define GS_PLATFORM_DIR_MAX_STR_SZ 			1024
+
+typedef struct gs_platform_dir_iter_t
+{
+	char root_path[GS_PLATFORM_DIR_MAX_STR_SZ]; // Root starting path of current iterator
+	char path[GS_PLATFORM_DIR_MAX_STR_SZ]; 		// Path of current iterator
+	bool32 is_dir;								// If iterator is a directory
+	bool32 is_recursive;						// If iterator is recursive
+	void* hndl;									// Platform necessary handle for internal data
+} gs_platform_dir_iter_t;
+
 /*===============================================================================================
 // Platform Interface
 ===============================================================================================*/
@@ -4541,9 +4554,13 @@ GS_API_DECL void  gs_platform_update(gs_platform_t* platform);    // Update plat
 GS_API_DECL float  gs_platform_delta_time();
 
 // Platform UUID
-GS_API_DECL gs_uuid_t gs_platform_generate_uuid();
+GS_API_DECL gs_uuid_t gs_platform_uuid_generate();
 GS_API_DECL void      gs_platform_uuid_to_string(char* temp_buffer, const gs_uuid_t* uuid); // Expects a temp buffer with at least 32 bytes
-GS_API_DECL uint32_t  gs_platform_hash_uuid(const gs_uuid_t* uuid);
+GS_API_DECL uint32_t  gs_platform_uuid_hash(const gs_uuid_t* uuid);
+
+// Platform Directory
+GS_API_DECL gs_platform_dir_iter_t gs_platform_dir_iter_create(const char* path, bool32 recursive);
+GS_API_DECL bool32 gs_platform_dir_iter_valid(gs_platform_dir_iter_t* iter);
 
 // Platform Input
 GS_API_DECL void      gs_platform_update_input(gs_platform_input_t* input);
@@ -5091,15 +5108,16 @@ typedef struct gs_graphics_uniform_layout_desc_t
 {
     gs_graphics_uniform_type type;                  // Type of field
     const char* fname;                              // Name of field (required for implicit APIs, like OpenGL/ES)
+    uint32_t count;                                 // Count variable (used for arrays such as glUniformXXXv)
 } gs_graphics_uniform_layout_desc_t;
 
 /* Graphics Uniform Desc */
 typedef struct gs_graphics_uniform_desc_t
 {
     gs_graphics_shader_stage_type stage;
-    const char* name;
-    gs_graphics_uniform_layout_desc_t* layout;
-    size_t layout_size;
+    const char* name;                               // Name of uniform (required for OpenGL/ES, WebGL)
+    gs_graphics_uniform_layout_desc_t* layout;      // Layout array for uniform data
+    size_t layout_size;                             // Size of uniform data in bytes
 } gs_graphics_uniform_desc_t;
 
 typedef struct gs_graphics_buffer_update_desc_t
@@ -5375,15 +5393,15 @@ GS_API_DECL void           gs_graphics_shutdown(gs_graphics_t* graphics);
 GS_API_DECL                gs_graphics_info_t* gs_graphics_info();
 
 /* Resource Creation */
-GS_API_DECL gs_handle(gs_graphics_texture_t)        gs_graphics_texture_create(gs_graphics_texture_desc_t* desc);
-GS_API_DECL gs_handle(gs_graphics_uniform_t)        gs_graphics_uniform_create(gs_graphics_uniform_desc_t* desc);
-GS_API_DECL gs_handle(gs_graphics_shader_t)         gs_graphics_shader_create(gs_graphics_shader_desc_t* desc);
-GS_API_DECL gs_handle(gs_graphics_vertex_buffer_t)  gs_graphics_vertex_buffer_create(gs_graphics_vertex_buffer_desc_t* desc);
-GS_API_DECL gs_handle(gs_graphics_index_buffer_t)   gs_graphics_index_buffer_create(gs_graphics_index_buffer_desc_t* desc);
-GS_API_DECL gs_handle(gs_graphics_uniform_buffer_t) gs_graphics_uniform_buffer_create(gs_graphics_uniform_buffer_desc_t* desc);
-GS_API_DECL gs_handle(gs_graphics_framebuffer_t)    gs_graphics_framebuffer_create(gs_graphics_framebuffer_desc_t* desc);
-GS_API_DECL gs_handle(gs_graphics_render_pass_t)    gs_graphics_render_pass_create(gs_graphics_render_pass_desc_t* desc);
-GS_API_DECL gs_handle(gs_graphics_pipeline_t)       gs_graphics_pipeline_create(gs_graphics_pipeline_desc_t* desc);
+GS_API_DECL gs_handle(gs_graphics_texture_t)        gs_graphics_texture_create(const gs_graphics_texture_desc_t* desc);
+GS_API_DECL gs_handle(gs_graphics_uniform_t)        gs_graphics_uniform_create(const gs_graphics_uniform_desc_t* desc);
+GS_API_DECL gs_handle(gs_graphics_shader_t)         gs_graphics_shader_create(const gs_graphics_shader_desc_t* desc);
+GS_API_DECL gs_handle(gs_graphics_vertex_buffer_t)  gs_graphics_vertex_buffer_create(const gs_graphics_vertex_buffer_desc_t* desc);
+GS_API_DECL gs_handle(gs_graphics_index_buffer_t)   gs_graphics_index_buffer_create(const gs_graphics_index_buffer_desc_t* desc);
+GS_API_DECL gs_handle(gs_graphics_uniform_buffer_t) gs_graphics_uniform_buffer_create(const gs_graphics_uniform_buffer_desc_t* desc);
+GS_API_DECL gs_handle(gs_graphics_framebuffer_t)    gs_graphics_framebuffer_create(const gs_graphics_framebuffer_desc_t* desc);
+GS_API_DECL gs_handle(gs_graphics_render_pass_t)    gs_graphics_render_pass_create(const gs_graphics_render_pass_desc_t* desc);
+GS_API_DECL gs_handle(gs_graphics_pipeline_t)       gs_graphics_pipeline_create(const gs_graphics_pipeline_desc_t* desc);
 
 /* Resource Destruction */
 GS_API_DECL void gs_graphics_texture_destroy(gs_handle(gs_graphics_texture_t) hndl);
@@ -5631,6 +5649,66 @@ GS_API_DECL gs_app_desc_t gs_main(int32_t argc, char** argv);
 
 #ifdef GS_IMPL
 
+/*=============================
+// GS_PLATFORM
+=============================*/
+
+// Default provided platform implementations (these will be removed eventually)
+#ifndef GS_PLATFORM_IMPL_CUSTOM
+
+#if (defined GS_PLATFORM_WIN || defined GS_PLATFORM_APPLE || defined GS_PLATFORM_LINUX)
+
+        #define GS_PLATFORM_IMPL_GLFW
+
+    #elif (defined GS_PLATFORM_WEB)
+
+        #define GS_PLATFORM_IMPL_EMSCRIPTEN
+
+    #elif (defined GS_PLATFORM_ANDROID)
+
+        #define GS_PLATFORM_IMPL_ANDROID
+
+    #endif
+#endif
+
+#ifdef GS_PLATFORM_IMPL_FILE
+#include GS_PLATFORM_IMPL_FILE
+#endif
+
+#include "impl/gs_platform_impl.h"
+
+/*=============================
+// GS_GRAPHICS
+=============================*/
+
+#ifndef GS_GRAPHICS_IMPL_CUSTOM
+
+#if (defined GS_PLATFORM_WIN || defined GS_PLATFORM_APPLE || defined GS_PLATFORM_LINUX)
+
+#define GS_GRAPHICS_IMPL_OPENGL_CORE
+
+#else
+
+#define GS_GRAPHICS_IMPL_OPENGL_ES
+
+#endif
+
+#endif
+
+#include "impl/gs_graphics_impl.h"
+
+/*=============================
+// GS_AUDIO
+=============================*/
+
+#ifndef GS_AUDIO_IMPL_CUSTOM
+
+#define GS_AUDIO_IMPL_MINIAUDIO
+
+#endif
+
+#include "impl/gs_audio_impl.h"
+
 /*========================
 // gs_byte_buffer
 ========================*/
@@ -5673,6 +5751,13 @@ void gs_byte_buffer_resize(gs_byte_buffer_t* buffer, size_t sz)
 
     buffer->data = data;    
     buffer->capacity = (uint32_t)sz;
+}
+
+void gs_byte_buffer_copy_contents(gs_byte_buffer_t* dst, gs_byte_buffer_t* src)
+{
+    gs_byte_buffer_seek_to_beg(dst);
+    gs_byte_buffer_seek_to_beg(src);
+    gs_byte_buffer_write_bulk(dst, src->data, src->size);
 }
 
 void gs_byte_buffer_seek_to_beg(gs_byte_buffer_t* buffer)
@@ -5797,7 +5882,7 @@ GS_API_DECL void gs_byte_buffer_memset(gs_byte_buffer_t* buffer, uint8_t val)
 GS_API_DECL gs_memory_block_t gs_memory_block_new(size_t sz)
 {
     gs_memory_block_t mem = gs_default_val();
-    mem.data = gs_malloc(sz);
+    mem.data = (uint8_t*)gs_malloc(sz);
     memset(mem.data, 0, sz);
     mem.size = sz;
     return mem;
@@ -5852,7 +5937,7 @@ GS_API_DECL size_t gs_memory_calc_padding_w_header(size_t base_address, size_t a
 GS_API_DECL gs_linear_allocator_t gs_linear_allocator_new(size_t sz)
 {
     gs_linear_allocator_t la = gs_default_val();
-    la.memory = gs_malloc(sz);
+    la.memory = (uint8_t*)gs_malloc(sz);
     memset(la.memory, 0, sz);
     la.offset = 0;
     la.total_size = sz;
@@ -6000,22 +6085,25 @@ GS_API_DECL void* gs_paged_allocator_allocate(gs_paged_allocator_t* pa)
     }
     else 
     {
-        gs_paged_allocator_page_t* page = _gs_malloc_init_impl(pa->block_size * pa->blocks_per_page + sizeof(gs_paged_allocator_page_t));
+        gs_paged_allocator_page_t* page = (gs_paged_allocator_page_t*)_gs_malloc_init_impl(pa->block_size * pa->blocks_per_page + sizeof(gs_paged_allocator_page_t));
         pa->page_count++;
 
         page->next = pa->pages;
-        page->data = gs_ptr_add(page, sizeof(gs_paged_allocator_page_t));
+        page->data = (gs_paged_allocator_block_t*)gs_ptr_add(page, sizeof(gs_paged_allocator_page_t));
         pa->pages = page;
+
+// #define gs_ptr_add(P, BYTES) \
+//     (((uint8_t*)P + (BYTES)))
 
         uint32_t bppmo = pa->blocks_per_page - 1;
         for (uint32_t i = 0; i < bppmo; ++i)
         {
-            gs_paged_allocator_block_t* node = gs_ptr_add(page->data, pa->block_size * i);
-            gs_paged_allocator_block_t* next = gs_ptr_add(page->data, pa->block_size * (i + 1));
+            gs_paged_allocator_block_t* node = (gs_paged_allocator_block_t*)gs_ptr_add(page->data, pa->block_size * i);
+            gs_paged_allocator_block_t* next = (gs_paged_allocator_block_t*)gs_ptr_add(page->data, pa->block_size * (i + 1));
             node->next = next;
         }
 
-        gs_paged_allocator_block_t* last = gs_ptr_add(page->data, pa->block_size * bppmo);
+        gs_paged_allocator_block_t* last = (gs_paged_allocator_block_t*)gs_ptr_add(page->data, pa->block_size * bppmo);
         last->next = NULL;
 
         pa->free_list = page->data->next;
@@ -6075,12 +6163,12 @@ GS_API_DECL void gs_paged_allocator_clear(gs_paged_allocator_t* pa)
 GS_API_DECL gs_heap_allocator_t gs_heap_allocate_new()
 {
     gs_heap_allocator_t ha = gs_default_val();
-    ha.memory = _gs_malloc_init_impl(GS_HEAP_ALLOC_DEFAULT_SIZE);
+    ha.memory = (gs_heap_allocator_header_t*)_gs_malloc_init_impl(GS_HEAP_ALLOC_DEFAULT_SIZE);
     ha.memory->next = NULL;
     ha.memory->prev = NULL;
     ha.memory->size = GS_HEAP_ALLOC_DEFAULT_SIZE;
 
-    ha.free_blocks = _gs_malloc_init_impl(sizeof(gs_heap_allocator_free_block_t) * GS_HEAP_ALLOC_DEFAULT_CAPCITY);
+    ha.free_blocks = (gs_heap_allocator_free_block_t*)_gs_malloc_init_impl(sizeof(gs_heap_allocator_free_block_t) * GS_HEAP_ALLOC_DEFAULT_CAPCITY);
     ha.free_block_count = 1;
     ha.free_block_capacity = GS_HEAP_ALLOC_DEFAULT_CAPCITY;
 
@@ -6118,7 +6206,7 @@ GS_API_DECL void* gs_heap_allocator_allocate(gs_heap_allocator_t* ha, size_t sz)
     }
 
     gs_heap_allocator_header_t* node = first_fit->header;
-    gs_heap_allocator_header_t* new_node = gs_ptr_add(node, size_needed);
+    gs_heap_allocator_header_t* new_node = (gs_heap_allocator_header_t*)gs_ptr_add(node, size_needed);
     node->size = size_needed;
 
     first_fit->size -= size_needed;
@@ -6353,70 +6441,54 @@ bool32_t gs_util_load_texture_data_from_memory(const void* memory, size_t sz, in
     return true;
 }
 
-/*=============================
-// GS_PLATFORM
-=============================*/
-
-// Default provided platform implementations (these will be removed eventually)
-#ifndef GS_PLATFORM_IMPL_CUSTOM
-
-    #if (defined GS_PLATFORM_WIN || defined GS_PLATFORM_APPLE || defined GS_PLATFORM_LINUX)
-
-        #define GS_PLATFORM_IMPL_GLFW
-
-    #elif (defined GS_PLATFORM_WEB)
-
-        #define GS_PLATFORM_IMPL_EMSCRIPTEN
-
-    #elif (defined GS_PLATFORM_ANDROID)
-
-        #define GS_PLATFORM_IMPL_ANDROID
-
-    #endif
-#endif
-
-#ifdef GS_PLATFORM_IMPL_FILE
-    #include GS_PLATFORM_IMPL_FILE
-#endif
-
-#include "impl/gs_platform_impl.h"
-
-/*=============================
-// GS_GRAPHICS
-=============================*/
-
-#ifndef GS_GRAPHICS_IMPL_CUSTOM
-
-    #if (defined GS_PLATFORM_WIN || defined GS_PLATFORM_APPLE || defined GS_PLATFORM_LINUX)
-
-        #define GS_GRAPHICS_IMPL_OPENGL_CORE
-
-    #else
-
-        #define GS_GRAPHICS_IMPL_OPENGL_ES
-
-    #endif
-
-#endif
-
-#include "impl/gs_graphics_impl.h"
-
-/*=============================
-// GS_AUDIO
-=============================*/
-
-#ifndef GS_AUDIO_IMPL_CUSTOM
-
-    #define GS_AUDIO_IMPL_MINIAUDIO
-
-#endif
-
-#include "impl/gs_audio_impl.h"
 
 /*==========================
 // GS_ASSET_TYPES
 ==========================*/
 
+bool gs_asset_texture_load_from_file(const char* path, void* out, gs_graphics_texture_desc_t* desc, bool32_t flip_on_load, bool32_t keep_data)
+{
+    gs_asset_texture_t* t = (gs_asset_texture_t*)out;
+
+    memset(&t->desc, 0, sizeof(gs_graphics_texture_desc_t));
+
+    if (desc) {
+        t->desc = *desc;
+    } else {
+        t->desc.format = GS_GRAPHICS_TEXTURE_FORMAT_RGBA8;
+        t->desc.min_filter = GS_GRAPHICS_TEXTURE_FILTER_LINEAR;
+        t->desc.mag_filter = GS_GRAPHICS_TEXTURE_FILTER_LINEAR;
+        t->desc.wrap_s = GS_GRAPHICS_TEXTURE_WRAP_REPEAT;
+        t->desc.wrap_t = GS_GRAPHICS_TEXTURE_WRAP_REPEAT;
+    }
+
+    // Load texture data
+    FILE* f = fopen(path, "rb");
+    if (!f) {
+        return false;
+    }
+
+    int32_t comp = 0;
+    stbi_set_flip_vertically_on_load(flip_on_load);
+    t->desc.data = (uint8_t*)stbi_load_from_file(f, (int32_t*)&t->desc.width, (int32_t*)&t->desc.height, (int32_t*)&comp, STBI_rgb_alpha);
+
+    if (!t->desc.data) {
+        fclose(f);
+        return false;
+    }
+
+    t->hndl = gs_graphics_texture_create(&t->desc);
+
+    if (!keep_data) {
+        gs_free(t->desc.data);
+        t->desc.data = NULL;
+    }
+
+    fclose(f);
+    return true;
+}
+
+/*
 bool gs_asset_texture_load_from_file(const char* path, void* out, gs_graphics_texture_desc_t* desc, bool32_t flip_on_load, bool32_t keep_data)
 {
     size_t len = 0;
@@ -6426,6 +6498,7 @@ bool gs_asset_texture_load_from_file(const char* path, void* out, gs_graphics_te
     gs_free(file_data);
     return ret;
 }
+ */
 
 bool gs_asset_texture_load_from_memory(const void* memory, size_t sz, void* out, gs_graphics_texture_desc_t* desc, bool32_t flip_on_load, bool32_t keep_data)
 {
@@ -6981,11 +7054,11 @@ gs_engine_t* gs_engine_create(gs_app_desc_t app_desc)
         // Set frame rate for application
         gs_engine_subsystem(platform)->time.max_fps = app_desc.frame_rate;
 
-        // Set vsync for video
-        gs_platform_enable_vsync(app_desc.enable_vsync);
-
         // Construct main window
         gs_platform_create_window(app_desc.window_title, app_desc.window_width, app_desc.window_height);
+
+        // Set vsync for video
+        gs_platform_enable_vsync(app_desc.enable_vsync); 
 
         // Construct graphics api 
         gs_engine_subsystem(graphics) = gs_graphics_create();

@@ -50,6 +50,7 @@ typedef struct gsgl_uniform_t {
     uint32_t location;              // Location of uniform
     size_t size;                    // Total data size of uniform
     uint32_t sid;                   // Shader id (should probably inverse this, but I don't want to force a map lookup)
+    uint32_t count;                 // Count (used for arrays)
 } gsgl_uniform_t;
 
 // When a user passes in a uniform layout, that handle could then pass to a WHOLE list of uniforms (if describing a struct)
@@ -125,6 +126,17 @@ typedef struct gsgl_data_t
     gs_slot_array(gsgl_uniform_list_t)  uniforms;
     gs_slot_array(gsgl_pipeline_t)      pipelines;
     gs_slot_array(gsgl_render_pass_t)   render_passes;
+
+    // All the required uniform data for strict aliasing.
+    struct {
+        gs_dyn_array(uint32_t)  ui32; 
+        gs_dyn_array(int32_t)   i32; 
+        gs_dyn_array(float)     flt; 
+        gs_dyn_array(gs_vec2)   vec2; 
+        gs_dyn_array(gs_vec3)   vec3; 
+        gs_dyn_array(gs_vec4)   vec4; 
+        gs_dyn_array(gs_mat4)   mat4; 
+    } uniform_data;
 
     // Cached data between draw calls (to minimize state changes)
     gsgl_data_cache_t cache;
@@ -556,6 +568,15 @@ void gs_graphics_destroy(gs_graphics_t* graphics)
     gs_slot_array_free(ogl->render_passes);
     gs_slot_array_free(ogl->uniform_buffers);
 
+    // Free uniform data array
+    gs_dyn_array_free(ogl->uniform_data.mat4);
+    gs_dyn_array_free(ogl->uniform_data.vec4);
+    gs_dyn_array_free(ogl->uniform_data.vec3);
+    gs_dyn_array_free(ogl->uniform_data.vec2);
+    gs_dyn_array_free(ogl->uniform_data.flt);
+    gs_dyn_array_free(ogl->uniform_data.i32);
+    gs_dyn_array_free(ogl->uniform_data.ui32);
+
     gs_free(graphics);
     graphics = NULL;
 }
@@ -619,7 +640,7 @@ void gs_graphics_shutdown(gs_graphics_t* graphics)
 {
 }
 
-gsgl_texture_t gl_texture_create_internal(gs_graphics_texture_desc_t* desc)
+gsgl_texture_t gl_texture_create_internal(const gs_graphics_texture_desc_t* desc)
 {
      gsgl_data_t* ogl = (gsgl_data_t*)gs_engine_subsystem(graphics)->user_data;
 
@@ -697,7 +718,7 @@ gsgl_texture_t gl_texture_create_internal(gs_graphics_texture_desc_t* desc)
 }
 
 /* Resource Creation */
-gs_handle(gs_graphics_texture_t) gs_graphics_texture_create(gs_graphics_texture_desc_t* desc)
+gs_handle(gs_graphics_texture_t) gs_graphics_texture_create(const gs_graphics_texture_desc_t* desc)
 {
     gsgl_data_t* ogl = (gsgl_data_t*)gs_engine_subsystem(graphics)->user_data;
     gsgl_texture_t tex = gl_texture_create_internal(desc);
@@ -705,7 +726,7 @@ gs_handle(gs_graphics_texture_t) gs_graphics_texture_create(gs_graphics_texture_
     return (gs_handle_create(gs_graphics_texture_t, gs_slot_array_insert(ogl->textures, tex)));
 }
 
-gs_handle(gs_graphics_uniform_t) gs_graphics_uniform_create(gs_graphics_uniform_desc_t* desc)
+gs_handle(gs_graphics_uniform_t) gs_graphics_uniform_create(const gs_graphics_uniform_desc_t* desc)
 {
     gsgl_data_t* ogl = (gsgl_data_t*)gs_engine_subsystem(graphics)->user_data;
 
@@ -736,10 +757,11 @@ gs_handle(gs_graphics_uniform_t) gs_graphics_uniform_create(gs_graphics_uniform_
         u.name = layout->fname;
         u.type = gsgl_uniform_type_to_gl_uniform_type(layout->type);
         u.size = gsgl_uniform_data_size_in_bytes(layout->type);
+        u.count = layout->count ? layout->count : 1;
         u.location = UINT32_MAX;
 
         // Add to size of ul
-        ul.size += u.size;
+        ul.size += u.size * u.count;
 
         // Push uniform into list
         gs_dyn_array_push(ul.uniforms, u);
@@ -748,7 +770,7 @@ gs_handle(gs_graphics_uniform_t) gs_graphics_uniform_create(gs_graphics_uniform_
     return gs_handle_create(gs_graphics_uniform_t, gs_slot_array_insert(ogl->uniforms, ul));
 }
 
-gs_handle(gs_graphics_vertex_buffer_t) gs_graphics_vertex_buffer_create(gs_graphics_vertex_buffer_desc_t* desc)
+gs_handle(gs_graphics_vertex_buffer_t) gs_graphics_vertex_buffer_create(const gs_graphics_vertex_buffer_desc_t* desc)
 {
     gsgl_data_t* ogl = (gsgl_data_t*)gs_engine_subsystem(graphics)->user_data;
     gs_handle(gs_graphics_vertex_buffer_t) hndl = gs_default_val();
@@ -769,7 +791,7 @@ gs_handle(gs_graphics_vertex_buffer_t) gs_graphics_vertex_buffer_create(gs_graph
     return hndl;
 }
 
-gs_handle(gs_graphics_index_buffer_t) gs_graphics_index_buffer_create(gs_graphics_index_buffer_desc_t* desc)
+gs_handle(gs_graphics_index_buffer_t) gs_graphics_index_buffer_create(const gs_graphics_index_buffer_desc_t* desc)
 {
     gsgl_data_t* ogl = (gsgl_data_t*)gs_engine_subsystem(graphics)->user_data;
     gs_handle(gs_graphics_index_buffer_t) hndl = gs_default_val();
@@ -790,7 +812,7 @@ gs_handle(gs_graphics_index_buffer_t) gs_graphics_index_buffer_create(gs_graphic
     return hndl;
 }
 
-gs_handle(gs_graphics_uniform_buffer_t) gs_graphics_uniform_buffer_create(gs_graphics_uniform_buffer_desc_t* desc)
+gs_handle(gs_graphics_uniform_buffer_t) gs_graphics_uniform_buffer_create(const gs_graphics_uniform_buffer_desc_t* desc)
 {
     gsgl_data_t* ogl = (gsgl_data_t*)gs_engine_subsystem(graphics)->user_data;
     gs_handle(gs_graphics_uniform_buffer_t) hndl = gs_default_val();
@@ -817,7 +839,7 @@ gs_handle(gs_graphics_uniform_buffer_t) gs_graphics_uniform_buffer_create(gs_gra
     return hndl;
 }
 
-gs_handle(gs_graphics_framebuffer_t) gs_graphics_framebuffer_create(gs_graphics_framebuffer_desc_t* desc)
+gs_handle(gs_graphics_framebuffer_t) gs_graphics_framebuffer_create(const gs_graphics_framebuffer_desc_t* desc)
 {
     gsgl_data_t* ogl = (gsgl_data_t*)gs_engine_subsystem(graphics)->user_data;
     gs_handle(gs_graphics_framebuffer_t) hndl = gs_default_val();
@@ -831,7 +853,7 @@ gs_handle(gs_graphics_framebuffer_t) gs_graphics_framebuffer_create(gs_graphics_
 #define GSGL_GRAPHICS_SHADER_PIPELINE_COMPUTE   0x02
 #define GSGL_GRAPHICS_MAX_SID                   128
 
-gs_handle(gs_graphics_shader_t) gs_graphics_shader_create(gs_graphics_shader_desc_t* desc)
+gs_handle(gs_graphics_shader_t) gs_graphics_shader_create(const gs_graphics_shader_desc_t* desc)
 {
     gsgl_data_t* ogl = (gsgl_data_t*)gs_engine_subsystem(graphics)->user_data;
     gsgl_shader_t shader = 0;
@@ -957,7 +979,7 @@ gs_handle(gs_graphics_shader_t) gs_graphics_shader_create(gs_graphics_shader_des
     return (gs_handle_create(gs_graphics_shader_t, gs_slot_array_insert(ogl->shaders, shader)));
 }
 
-gs_handle(gs_graphics_render_pass_t) gs_graphics_render_pass_create(gs_graphics_render_pass_desc_t* desc)
+gs_handle(gs_graphics_render_pass_t) gs_graphics_render_pass_create(const gs_graphics_render_pass_desc_t* desc)
 {
     gsgl_data_t* ogl = (gsgl_data_t*)gs_engine_subsystem(graphics)->user_data;
 
@@ -979,7 +1001,7 @@ gs_handle(gs_graphics_render_pass_t) gs_graphics_render_pass_create(gs_graphics_
     return (gs_handle_create(gs_graphics_render_pass_t, gs_slot_array_insert(ogl->render_passes, pass)));
 }
 
-gs_handle(gs_graphics_pipeline_t) gs_graphics_pipeline_create(gs_graphics_pipeline_desc_t* desc)
+gs_handle(gs_graphics_pipeline_t) gs_graphics_pipeline_create(const gs_graphics_pipeline_desc_t* desc)
 {
     gsgl_data_t* ogl = (gsgl_data_t*)gs_engine_subsystem(graphics)->user_data;
 
@@ -1550,11 +1572,12 @@ void gs_graphics_submit_command_buffer(gs_command_buffer_t* cb)
                                     gsgl_shader_t shader = gs_slot_array_get(ogl->shaders, sid);
 
                                     // Construct temp name, concat with base name + uniform field name
-                                    const char* name = ul->name;
+                                    char name[256] = gs_default_val();
+                                    memcpy(name, ul->name, 256);
                                     if (u->name)
                                     {
                                         gs_snprintfc(UTMP, 256, "%s%s", ul->name, u->name);
-                                        name = UTMP;
+                                        memcpy(name, UTMP, 256);
                                     }
 
                                     // Grab location of uniform based on name
@@ -1573,60 +1596,106 @@ void gs_graphics_submit_command_buffer(gs_command_buffer_t* cb)
                                 {
                                     case GSGL_UNIFORMTYPE_FLOAT: 
                                     {
-                                        gs_assert(u->size == sizeof(float));
-                                        gs_byte_buffer_read_bulkc(&cb->commands, float, v, u->size);
-                                        glUniform1f(u->location, v);
+                                        // Need to read bulk data for array.  
+                                        gs_assert(u->size == sizeof(float)); 
+                                        gs_dyn_array_clear(ogl->uniform_data.flt);
+                                        uint32_t ct = u->count ? u->count : 1;
+                                        size_t sz = ct * u->size;
+                                        gs_for_range(ct) {
+                                            gs_byte_buffer_readc(&cb->commands, float, v);
+                                            gs_dyn_array_push(ogl->uniform_data.flt, v);
+                                        }
+                                        glUniform1fv(u->location, ct, ogl->uniform_data.flt); 
                                     } break;
 
                                     case GSGL_UNIFORMTYPE_INT: 
                                     {
-                                        gs_assert(u->size == sizeof(int32_t));
-                                        gs_byte_buffer_read_bulkc(&cb->commands, int32_t, v, u->size);
-                                        glUniform1i(u->location, v);
+                                        gs_assert(u->size == sizeof(int32_t)); 
+                                        gs_dyn_array_clear(ogl->uniform_data.i32);
+                                        uint32_t ct = u->count ? u->count : 1;
+                                        size_t sz = ct * u->size;
+                                        gs_for_range(ct) {
+                                            gs_byte_buffer_readc(&cb->commands, int32_t, v);
+                                            gs_dyn_array_push(ogl->uniform_data.i32, v);
+                                        }
+                                        glUniform1iv(u->location, ct, ogl->uniform_data.i32); 
                                     } break;
 
                                     case GSGL_UNIFORMTYPE_VEC2: 
                                     {
-                                        gs_assert(u->size == sizeof(gs_vec2));
-                                        gs_byte_buffer_read_bulkc(&cb->commands, gs_vec2, v, u->size);
-                                        glUniform2f(u->location, v.x, v.y);
+                                        gs_assert(u->size == sizeof(gs_vec2)); 
+                                        gs_dyn_array_clear(ogl->uniform_data.vec2);
+                                        uint32_t ct = u->count ? u->count : 1;
+                                        size_t sz = ct * u->size;
+                                        gs_for_range(ct) {
+                                            gs_byte_buffer_readc(&cb->commands, gs_vec2, v);
+                                            gs_dyn_array_push(ogl->uniform_data.vec2, v);
+                                        }
+                                        glUniform2fv(u->location, ct, (float*)ogl->uniform_data.vec2); 
                                     } break;
 
                                     case GSGL_UNIFORMTYPE_VEC3: 
                                     {
                                         gs_assert(u->size == sizeof(gs_vec3));
-                                        gs_byte_buffer_read_bulkc(&cb->commands, gs_vec3, v, u->size);
-                                        glUniform3f(u->location, v.x, v.y, v.z);
+                                        gs_dyn_array_clear(ogl->uniform_data.vec3);
+                                        uint32_t ct = u->count ? u->count : 1;
+                                        size_t sz = ct * u->size;
+                                        gs_for_range(ct) {
+                                            gs_byte_buffer_readc(&cb->commands, gs_vec3, v);
+                                            gs_dyn_array_push(ogl->uniform_data.vec3, v);
+                                        }
+                                        glUniform3fv(u->location, ct, (float*)ogl->uniform_data.vec3); 
                                     } break;
 
                                     case GSGL_UNIFORMTYPE_VEC4: 
-                                    {
+                                    { 
                                         gs_assert(u->size == sizeof(gs_vec4));
-                                        gs_byte_buffer_read_bulkc(&cb->commands, gs_vec4, v, u->size);
-                                        glUniform4f(u->location, v.x, v.y, v.z, v.w);
+                                        gs_dyn_array_clear(ogl->uniform_data.vec4);
+                                        uint32_t ct = u->count ? u->count : 1;
+                                        size_t sz = ct * u->size;
+                                        gs_for_range(ct) {
+                                            gs_byte_buffer_readc(&cb->commands, gs_vec4, v);
+                                            gs_dyn_array_push(ogl->uniform_data.vec4, v);
+                                        }
+                                        glUniform4fv(u->location, ct, (float*)ogl->uniform_data.vec4); 
                                     } break;
 
                                     case GSGL_UNIFORMTYPE_MAT4: 
-                                    {
-                                        gs_assert(u->size == sizeof(gs_mat4));
-                                        gs_byte_buffer_read_bulkc(&cb->commands, gs_mat4, v, u->size);
-                                        glUniformMatrix4fv(u->location, 1, false, (float*)(v.elements));
+                                    { 
+                                        gs_assert(u->size == sizeof(gs_mat4)); 
+                                        gs_dyn_array_clear(ogl->uniform_data.mat4);
+                                        uint32_t ct = u->count ? u->count : 1;
+                                        size_t sz = ct * u->size; 
+                                        gs_for_range(ct) {
+                                            gs_byte_buffer_readc(&cb->commands, gs_mat4, v);
+                                            gs_dyn_array_push(ogl->uniform_data.mat4, v);
+                                        }
+                                        glUniformMatrix4fv(u->location, ct, false, (float*)ogl->uniform_data.mat4); 
                                     } break;
 
                                     case GSGL_UNIFORMTYPE_SAMPLER2D:
                                     {
                                         gs_assert(u->size == sizeof(gs_handle(gs_graphics_texture_t)));
-                                        gs_byte_buffer_read_bulkc(&cb->commands, gs_handle(gs_graphics_texture_t), v, u->size);
+                                        uint32_t ct = u->count ? u->count : 1; 
+                                        int32_t binds[128] = gs_default_val();
+                                        for (uint32_t i = 0; (i < ct && i < 128); ++i)    // Max of 128 texture binds. Get real.
+                                        {
+                                            gs_byte_buffer_read_bulkc(&cb->commands, gs_handle(gs_graphics_texture_t), v, u->size); 
 
-                                        // Get texture, also need binding, but will worry about that in a bit
-                                        gsgl_texture_t* tex = gs_slot_array_getp(ogl->textures, v.id);
+                                            // Get texture, also need binding, but will worry about that in a bit
+                                            gsgl_texture_t* tex = gs_slot_array_getp(ogl->textures, v.id);
 
-                                        // Activate texture slot
-                                        glActiveTexture(GL_TEXTURE0 + binding);
-                                        // Bind texture
-                                        glBindTexture(GL_TEXTURE_2D, tex->id);
-                                        // Bind uniform
-                                        glUniform1i(u->location, binding++);
+                                            // Activate texture slot
+                                            glActiveTexture(GL_TEXTURE0 + binding);
+
+                                            // Bind texture
+                                            glBindTexture(GL_TEXTURE_2D, tex->id);
+
+                                            binds[i] = (int32_t)binding++;
+                                        } 
+
+                                        // Bind uniforms
+                                        glUniform1iv(u->location, ct, (int32_t*)binds);
 
                                     } break;
 

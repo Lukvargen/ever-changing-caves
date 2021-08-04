@@ -87,10 +87,14 @@ typedef struct gs_gfxt_uniform_block_desc_t {
 	size_t layout_size;									// Size of layout in bytes
 } gs_gfxt_uniform_block_desc_t;
 
+typedef struct gs_gfxt_uniform_block_lookup_key_t {
+	char name[64];
+} gs_gfxt_uniform_block_lookup_key_t;
+
 typedef struct gs_gfxt_uniform_block_t {
-	gs_dyn_array(gs_gfxt_uniform_t) uniforms;			// Raw uniform handle array
-	gs_hash_table(uint64_t, uint32_t) lookup;			// Index lookup table (used for byte buffer offsets in material uni. data)
-	size_t size;										// Total size of material data for entire block
+	gs_dyn_array(gs_gfxt_uniform_t) uniforms;	 // Raw uniform handle array
+	gs_hash_table(uint64_t, uint32_t) lookup;	 // Index lookup table (used for byte buffer offsets in material uni. data)
+	size_t size;								 // Total size of material data for entire block
 } gs_gfxt_uniform_block_t;
 
 // Pipeline
@@ -172,22 +176,26 @@ typedef struct gs_gfxt_renderable_t {
 } gs_gfxt_renderable_t;
 
 // Graphics scene
-typedef struct gs_gfxt_graphics_scene_t {
+typedef struct gs_gfxt_scene_t {
 	gs_slot_array(gs_gfxt_renderable_t) renderables;
-} gs_gfxt_graphics_scene_t;
+} gs_gfxt_scene_t;
 
 /*==== API =====*/
 
 // Creation/Destruction
-GS_API_DECL gs_gfxt_pipeline_t 	    gs_gfxt_pipeline_create(gs_gfxt_pipeline_desc_t* desc);
+GS_API_DECL gs_gfxt_pipeline_t 	    gs_gfxt_pipeline_create(const gs_gfxt_pipeline_desc_t* desc);
 GS_API_DECL gs_gfxt_material_t 		gs_gfxt_material_create(gs_gfxt_material_desc_t* desc);
-GS_API_DECL gs_gfxt_mesh_t 			gs_gfxt_mesh_create(gs_gfxt_mesh_desc_t* desc);
-GS_API_DECL gs_gfxt_renderable_t 	gs_gfxt_renderable_create(gs_gfxt_renderable_desc_t* desc);
-GS_API_DECL gs_gfxt_uniform_block_t gs_gfxt_uniform_block_create(gs_gfxt_uniform_block_desc_t* desc);
+GS_API_DECL gs_gfxt_mesh_t 			gs_gfxt_mesh_create(const gs_gfxt_mesh_desc_t* desc);
+GS_API_DECL gs_gfxt_renderable_t 	gs_gfxt_renderable_create(const gs_gfxt_renderable_desc_t* desc);
+GS_API_DECL gs_gfxt_uniform_block_t gs_gfxt_uniform_block_create(const gs_gfxt_uniform_block_desc_t* desc);
+
+// Copy
+GS_API_DECL gs_gfxt_material_t gs_gfxt_material_deep_copy(gs_gfxt_material_t* src);
 
 // Material API
 GS_API_DECL void gs_gfxt_material_set_uniform(gs_gfxt_material_t* mat, const char* name, void* data);
 GS_API_DECL void gs_gfxt_material_bind(gs_command_buffer_t* cb, gs_gfxt_material_t* mat);
+GS_API_DECL void gs_gfxt_material_bind_uniforms(gs_command_buffer_t* cb, gs_gfxt_material_t* mat);
 
 // Mesh API
 GS_API_DECL void gs_gfxt_mesh_draw(gs_command_buffer_t* cb, gs_gfxt_mesh_t* mesh);
@@ -208,7 +216,7 @@ gs_handle(gs_graphics_texture_t) gs_gfxt_texture_generate_default();
 
 // Creation/Destruction
 GS_API_DECL 
-gs_gfxt_pipeline_t gs_gfxt_pipeline_create(gs_gfxt_pipeline_desc_t* desc)
+gs_gfxt_pipeline_t gs_gfxt_pipeline_create(const gs_gfxt_pipeline_desc_t* desc)
 {
 	gs_gfxt_pipeline_t pip = gs_default_val();
 
@@ -223,7 +231,7 @@ gs_gfxt_pipeline_t gs_gfxt_pipeline_create(gs_gfxt_pipeline_desc_t* desc)
 }
 
 GS_API_DECL 
-gs_gfxt_uniform_block_t gs_gfxt_uniform_block_create(gs_gfxt_uniform_block_desc_t* desc)
+gs_gfxt_uniform_block_t gs_gfxt_uniform_block_create(const gs_gfxt_uniform_block_desc_t* desc)
 {
 	gs_gfxt_uniform_block_t block = gs_default_val();
 
@@ -232,10 +240,23 @@ gs_gfxt_uniform_block_t gs_gfxt_uniform_block_create(gs_gfxt_uniform_block_desc_
 	// Iterate through layout, construct uniforms, place them into hash table
 	uint32_t offset = 0;
 	uint32_t ct = desc->layout_size / sizeof(gs_gfxt_uniform_desc_t);
+	gs_println("layout size: %zu, CT: %zu", ct, desc->layout_size);
 	for (uint32_t i = 0; i < ct; ++i)
 	{
 		gs_gfxt_uniform_desc_t* ud = &desc->layout[i];
 
+		gs_gfxt_uniform_t u = gs_default_val();
+		gs_graphics_uniform_desc_t u_desc = gs_default_val();
+		gs_graphics_uniform_layout_desc_t u_layout = gs_default_val();
+		u_layout.type = ud->type;
+		u_desc.name = ud->name;
+		u_desc.layout = &u_layout;  		
+		u.hndl = gs_graphics_uniform_create(&u_desc);
+		u.binding = ud->binding;
+		u.offset = offset;
+		u.type = ud->type;
+
+		/*
 		gs_gfxt_uniform_t u = {
 			.hndl = gs_graphics_uniform_create (
 		        &(gs_graphics_uniform_desc_t) {
@@ -247,6 +268,7 @@ gs_gfxt_uniform_block_t gs_gfxt_uniform_block_create(gs_gfxt_uniform_block_desc_
 			.offset = offset,
 			.type = ud->type
 		};
+		*/
 
 		// Add to data offset based on type
 		switch (ud->type) {
@@ -261,8 +283,11 @@ gs_gfxt_uniform_block_t gs_gfxt_uniform_block_create(gs_gfxt_uniform_block_desc_
 		}
 
 		// Add uniform to block with name as key
+//		gs_gfxt_uniform_block_lookup_key_t key = gs_default_val();
+//		memcpy(key.name, ud->name, 64);
+		uint64_t key = gs_hash_str64(ud->name);
 		gs_dyn_array_push(block.uniforms, u);
-		gs_hash_table_insert(block.lookup, gs_hash_str64(ud->name), gs_dyn_array_size(block.uniforms) - 1);
+		gs_hash_table_insert(block.lookup, key, gs_dyn_array_size(block.uniforms) - 1);
 	}
 	block.size = offset;
 
@@ -293,7 +318,7 @@ gs_gfxt_material_t gs_gfxt_material_create(gs_gfxt_material_desc_t* desc)
 }
 
 GS_API_DECL 
-gs_gfxt_mesh_t gs_gfxt_mesh_create(gs_gfxt_mesh_desc_t* desc)
+gs_gfxt_mesh_t gs_gfxt_mesh_create(const gs_gfxt_mesh_desc_t* desc)
 {
 	gs_gfxt_mesh_t mesh = gs_default_val();
 
@@ -339,7 +364,7 @@ gs_gfxt_mesh_t gs_gfxt_mesh_create(gs_gfxt_mesh_desc_t* desc)
 }
 
 GS_API_DECL 
-gs_gfxt_renderable_t gs_gfxt_renderable_create(gs_gfxt_renderable_desc_t* desc)
+gs_gfxt_renderable_t gs_gfxt_renderable_create(const gs_gfxt_renderable_desc_t* desc)
 {
 	gs_gfxt_renderable_t rend = gs_default_val();
 
@@ -353,6 +378,14 @@ gs_gfxt_renderable_t gs_gfxt_renderable_create(gs_gfxt_renderable_desc_t* desc)
 	return rend;
 }
 
+// Copy API
+GS_API_DECL gs_gfxt_material_t gs_gfxt_material_deep_copy(gs_gfxt_material_t* src)
+{
+	gs_gfxt_material_t mat = gs_gfxt_material_create(&src->desc);
+	gs_byte_buffer_copy_contents(&mat.uniform_data, &src->uniform_data);
+	return mat;
+}
+
 // Material API
 GS_API_DECL
 void gs_gfxt_material_set_uniform(gs_gfxt_material_t* mat, const char* name, void* data)
@@ -362,11 +395,13 @@ void gs_gfxt_material_set_uniform(gs_gfxt_material_t* mat, const char* name, voi
 	gs_gfxt_pipeline_t* pip = GS_GFXT_RAW_DATA(&mat->desc.pip_func, gs_gfxt_pipeline_t);
 	gs_assert(pip);
 
-	u64 hash = gs_hash_str64(name);
-	if (!gs_hash_table_key_exists(pip->ublock.lookup, hash)) return;
+//	gs_gfxt_uniform_block_lookup_key_t key = gs_default_val();
+//	memcpy(key.name, name, 64);
+	uint64_t key = gs_hash_str64(name);
+	if (!gs_hash_table_key_exists(pip->ublock.lookup, key)) return;
 
 	// Based on name, need to get uniform
-	uint32_t uidx = gs_hash_table_get(pip->ublock.lookup, hash);
+	uint32_t uidx = gs_hash_table_get(pip->ublock.lookup, key);
 	gs_gfxt_uniform_t* u = &pip->ublock.uniforms[uidx];
 
 	// Seek to offset
@@ -387,8 +422,17 @@ void gs_gfxt_material_set_uniform(gs_gfxt_material_t* mat, const char* name, voi
 	}
 }
 
-GS_API_DECL 
+GS_API_DECL
 void gs_gfxt_material_bind(gs_command_buffer_t* cb, gs_gfxt_material_t* mat)
+{
+    // Binds the pipeline
+	gs_gfxt_pipeline_t* pip = GS_GFXT_RAW_DATA(&mat->desc.pip_func, gs_gfxt_pipeline_t);
+	gs_assert(pip);
+	gs_graphics_bind_pipeline(cb, pip->hndl);
+}
+
+GS_API_DECL 
+void gs_gfxt_material_bind_uniforms(gs_command_buffer_t* cb, gs_gfxt_material_t* mat)
 {
 	if (!mat) return;
 
@@ -398,11 +442,12 @@ void gs_gfxt_material_bind(gs_command_buffer_t* cb, gs_gfxt_material_t* mat)
 	// Grab uniform layout from pipeline
 	for (uint32_t i = 0; i < gs_dyn_array_size(pip->ublock.uniforms); ++i) {
 		gs_gfxt_uniform_t* u = &pip->ublock.uniforms[i];
-		gs_graphics_bind_desc_t bind = {
-			.uniforms = {.desc = &(gs_graphics_bind_uniform_desc_t){
-				.uniform = u->hndl, .data = (mat->uniform_data.data + u->offset), .binding = u->binding
-			}}
-		};
+		gs_graphics_bind_desc_t bind = gs_default_val();
+		gs_graphics_bind_uniform_desc_t uniforms[1];
+		uniforms[0].uniform = u->hndl;
+		uniforms[0].data = (mat->uniform_data.data + u->offset);
+		uniforms[0].binding = u->binding;
+
 		gs_graphics_apply_bindings(cb, &bind);
 	}
 }
@@ -417,13 +462,18 @@ void gs_gfxt_mesh_draw(gs_command_buffer_t* cb, gs_gfxt_mesh_t* mp)
         gs_gfxt_mesh_primitive_t* prim = &mp->primitives[i];
 
         // Bindings for all buffers: vertex, index, uniform, sampler
-        gs_graphics_bind_desc_t binds = {
-            .vertex_buffers = {.desc = &(gs_graphics_bind_vertex_buffer_desc_t){.buffer = prim->vbo}},
-            .index_buffers = {.desc = &(gs_graphics_bind_index_buffer_desc_t){.buffer = prim->ibo}}
-        };
-
+        gs_graphics_bind_desc_t binds = gs_default_val();
+		gs_graphics_bind_vertex_buffer_desc_t vdesc = gs_default_val();
+		gs_graphics_bind_index_buffer_desc_t idesc = gs_default_val();
+		vdesc.buffer = prim->vbo;
+		idesc.buffer = prim->ibo;
+		binds.vertex_buffers.desc = &vdesc;
+		binds.index_buffers.desc = &idesc;
+		gs_graphics_draw_desc_t ddesc = gs_default_val();
+		ddesc.start = 0;
+		ddesc.count = prim->count;
         gs_graphics_apply_bindings(cb, &binds);
-        gs_graphics_draw(cb, &(gs_graphics_draw_desc_t){.start = 0, .count = prim->count});
+        gs_graphics_draw(cb, &ddesc);
     }
 }
 
@@ -465,11 +515,17 @@ gs_gfxt_mesh_t gs_gfxt_mesh_create_from_file(const char* path, gs_gfxt_mesh_impo
         return mesh;
     }
 
+	gs_gfxt_mesh_desc_t mdesc = gs_default_val();
+	mdesc.meshes = meshes;
+	mdesc.size = mesh_count * sizeof(gs_gfxt_mesh_raw_data_t);
+
     // Construct mesh from raw data
+	/*
     mesh = gs_gfxt_mesh_create(&(gs_gfxt_mesh_desc_t) {
     	.meshes = meshes, 
     	.size = mesh_count * sizeof(gs_gfxt_mesh_raw_data_t)
     });
+	*/
 
     return mesh;
 }
@@ -488,7 +544,7 @@ bool gs_gfxt_load_gltf_data_from_file(const char* path, gs_gfxt_mesh_import_opti
 
     // GLTF
     if (gs_string_compare_equal(file_ext, "gltf")) {
-	    file_data = gs_platform_read_file_contents(path, "r", &len);
+	    file_data = gs_platform_read_file_contents(path, "rb", &len);
 	    gs_println("GFXT:Loading GLTF: %s", path);
     }
     // GLB
@@ -905,6 +961,15 @@ gs_gfxt_mesh_t gs_gfxt_mesh_unit_quad_generate(gs_gfxt_mesh_import_options_t* op
 	gs_gfxt_mesh_primitive_t prim = {0};
 	prim.count = 6;
 
+	gs_gfxt_mesh_layout_t mlayout[2] = gs_default_val();
+	mlayout[0].type = GS_GFXT_MESH_ATTRIBUTE_TYPE_POSITION;
+	mlayout[1].type = GS_GFXT_MESH_ATTRIBUTE_TYPE_TEXCOORD;
+	gs_gfxt_mesh_import_options_t def_options = gs_default_val();
+	def_options.layout = mlayout;
+	def_options.layout_size = 2 * sizeof(gs_gfxt_mesh_layout_t);
+	def_options.index_buffer_element_size = sizeof(uint32_t);
+
+	/*
 	gs_gfxt_mesh_import_options_t def_options = {
 		.layout = (gs_gfxt_mesh_layout_t[]) {
 			{.type = GS_GFXT_MESH_ATTRIBUTE_TYPE_POSITION},
@@ -913,6 +978,7 @@ gs_gfxt_mesh_t gs_gfxt_mesh_unit_quad_generate(gs_gfxt_mesh_import_options_t* op
 		.layout_size = 2 * sizeof(gs_gfxt_mesh_layout_t),
 		.index_buffer_element_size = sizeof(uint32_t)
 	};
+	*/
 
 	// If no decl, then just use default layout
 	gs_gfxt_mesh_import_options_t* moptions = options ? options : &def_options; 
@@ -934,19 +1000,31 @@ gs_gfxt_mesh_t gs_gfxt_mesh_unit_quad_generate(gs_gfxt_mesh_import_options_t* op
 	}
 
 	// Construct primitive for mesh
+	gs_graphics_vertex_buffer_desc_t vdesc = gs_default_val();
+	vdesc.data = vbuffer.data;
+	vdesc.size = vbuffer.size;
+	/*
 	prim.vbo = gs_graphics_vertex_buffer_create(
 		&(gs_graphics_vertex_buffer_desc_t) {
 			.data = vbuffer.data,
 			.size = vbuffer.size
 		}
 	);
+	*/
+	prim.vbo = gs_graphics_vertex_buffer_create(&vdesc);
 
+	/*
 	prim.ibo = gs_graphics_index_buffer_create(
 		&(gs_graphics_index_buffer_desc_t) {
 			.data = i_data,
 			.size = sizeof(i_data)
 		}
 	);
+	*/
+	gs_graphics_index_buffer_desc_t idesc = gs_default_val();
+	idesc.data = i_data;
+	idesc.size = sizeof(i_data);
+	gs_graphics_index_buffer_create(&idesc);
 
 	// Add primitive
 	gs_dyn_array_push(mesh.primitives, prim);
@@ -973,16 +1051,15 @@ gs_handle(gs_graphics_texture_t) gs_gfxt_texture_generate_default()
         } 
     }
 
-    gs_graphics_texture_desc_t desc = {
-        .width = GS_GFXT_ROW_COL_CT,
-        .height = GS_GFXT_ROW_COL_CT,
-        .format = GS_GRAPHICS_TEXTURE_FORMAT_RGBA8,
-        .min_filter = GS_GRAPHICS_TEXTURE_FILTER_NEAREST, 
-        .mag_filter = GS_GRAPHICS_TEXTURE_FILTER_NEAREST, 
-        .wrap_s = GS_GRAPHICS_TEXTURE_WRAP_REPEAT,
-        .wrap_t = GS_GRAPHICS_TEXTURE_WRAP_REPEAT,
-        .data = pixels
-    };
+    gs_graphics_texture_desc_t desc = gs_default_val();
+    desc.width = GS_GFXT_ROW_COL_CT;
+    desc.height = GS_GFXT_ROW_COL_CT;
+	desc.format = GS_GRAPHICS_TEXTURE_FORMAT_RGBA8;
+	desc.min_filter = GS_GRAPHICS_TEXTURE_FILTER_NEAREST; 
+	desc.mag_filter = GS_GRAPHICS_TEXTURE_FILTER_NEAREST;
+	desc.wrap_s = GS_GRAPHICS_TEXTURE_WRAP_REPEAT;
+	desc.wrap_t = GS_GRAPHICS_TEXTURE_WRAP_REPEAT;
+	desc.data = pixels;
 
     // Create dynamic texture
     return gs_graphics_texture_create(&desc);
