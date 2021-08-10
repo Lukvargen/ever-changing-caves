@@ -30,8 +30,8 @@
 #define PROJECITLE_MAX_LIFE_TIME 3.f
 #define EXPLODE_DMG 5.f
 
-#define TILES_SIZE_X	80 // RESOLUTION_X / TILE_SIZE
-#define TILES_SIZE_Y	45 // RESOLUTION_Y / TILE_SIZE
+#define TILES_SIZE_X	120//80 // RESOLUTION_X / TILE_SIZE
+#define TILES_SIZE_Y	68//45 // RESOLUTION_Y / TILE_SIZE
 #define TILE_SIZE		8
 #define TILE_AIR_THRESHOLD 0.4f
 
@@ -40,6 +40,9 @@
 #define window_size(...)	gs_platform_window_sizev(gs_platform_main_window())
 #define RESOLUTION_X	640.f
 #define RESOLUTION_Y	360.f
+
+#define WORLD_SIZE_X	960.f
+#define WORLD_SIZE_Y	544.f
 
 
 
@@ -63,7 +66,8 @@ typedef enum entity_type_t
 	ENTITY_TYPE_PLAYER,
 	ENTITY_TYPE_WORM,
 	ENTITY_TYPE_TURRET,
-	ENTITY_TYPE_ORB
+	ENTITY_TYPE_ORB,
+	ENTITY_TYPE_BOSS
 } entity_type_t;
 
 
@@ -144,8 +148,18 @@ typedef enum turret_type_t
 {
 	TURRET_TYPE_NORMAL,
 	TURRET_TYPE_SPIN,
-	TURRET_TYPE_WORM_SPAWN
+	TURRET_TYPE_WORM_SPAWN,
+	TURRET_TYPE_BOSS
 } turret_type_t;
+
+typedef struct turret_leg_t
+{
+	gs_vec2 position;
+	gs_vec2 target_position;
+	gs_vec2 animation_position;
+	float time_moving;
+	bool moving;
+} turret_leg_t;
 
 typedef enum worm_type_t
 {
@@ -201,8 +215,11 @@ typedef struct entity_t
 			float turret_shoot_time;
 			float turret_shoot_delay;
 			float turret_burst_shoot_delay;
+			int turret_burst_count;
 			float turret_angle;
 			int turret_shot_count;
+			
+			turret_leg_t turret_legs[4];
 			gs_vec2 turret_dir;
 			float turret_time_since_spawn;
 			bool turret_shooting;
@@ -251,6 +268,8 @@ typedef struct game_data_t
 {
 	gs_command_buffer_t gcb;
 	gs_immediate_draw_t gsi;
+
+	gs_vec2 camera_pos;
 
 	// audio
 	gs_handle(gs_audio_source_t) hit_sound_hndl;
@@ -339,7 +358,8 @@ typedef struct game_data_t
 } game_data_t;
 
 
-gs_vec2 get_world_mouse_pos();
+gs_vec2 get_world_mouse_pos(game_data_t* gd);
+gs_vec2 get_local_mouse_pos();
 void next_wave(game_data_t* gd);
 void restart_game(game_data_t* gd);
 

@@ -136,7 +136,7 @@ ui_control_t* ui_panel(gs_immediate_draw_t* gsi, ui_control_t* control)
     return control;
 }
 
-bool ui_button(gs_immediate_draw_t* gsi, ui_control_t* control)
+bool ui_button(gs_immediate_draw_t* gsi, gs_vec2 m_pos, ui_control_t* control)
 {
     
     ui_calculate_size(control);
@@ -145,7 +145,6 @@ bool ui_button(gs_immediate_draw_t* gsi, ui_control_t* control)
 
     gs_color_t color = control->color;
     bool pressed = false;
-    gs_vec2 m_pos = get_world_mouse_pos();
     if (m_pos.x >= control->pos.x && m_pos.x < control->pos.x + control->size.x &&
         m_pos.y >= control->pos.y && m_pos.y < control->pos.y + control->size.y) {
             float brightness = 1.5;

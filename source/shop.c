@@ -72,25 +72,25 @@ char* get_upgrade_string(game_data_t* gd, upgrade_t* upgrade, char* text, int TE
             gs_snprintf(text, TEXT_SIZE, "HP+%i\n(%i->%i)", upgrade->ivalue, gd->player.max_hp, gd->player.max_hp + upgrade->ivalue);
             break;
         case (UPGRADE_TYPE_LIFETIME):
-            gs_snprintf(text, TEXT_SIZE, "P LIFETIME+%.1f\n(%.1f->%.1f)", upgrade->fvalue, gd->player.player_projectile_lifetime, gd->player.player_projectile_lifetime + upgrade->fvalue);
+            gs_snprintf(text, TEXT_SIZE, "PROJECTILE LIFETIME+%.1f\n(%.1f->%.1f)", upgrade->fvalue, gd->player.player_projectile_lifetime, gd->player.player_projectile_lifetime + upgrade->fvalue);
             break;
         case (UPGRADE_TYPE_SPEED):
-            gs_snprintf(text, TEXT_SIZE, "P SPEED+%.0f\n(%.0f->%.0f)", upgrade->fvalue, gd->player.player_projectile_speed, gd->player.player_projectile_speed + upgrade->fvalue);
+            gs_snprintf(text, TEXT_SIZE, "PROJECTILE SPEED+%.0f\n(%.0f->%.0f)", upgrade->fvalue, gd->player.player_projectile_speed, gd->player.player_projectile_speed + upgrade->fvalue);
             break;
         case (UPGRADE_TYPE_ACCELL):
-            gs_snprintf(text, TEXT_SIZE, "P ACCEL+%.0f\n(%.0f->%.0f)", upgrade->fvalue, gd->player.player_projectile_accel, gd->player.player_projectile_accel + upgrade->fvalue);
+            gs_snprintf(text, TEXT_SIZE, "PROJECTILE ACCEL+%.0f\n(%.0f->%.0f)", upgrade->fvalue, gd->player.player_projectile_accel, gd->player.player_projectile_accel + upgrade->fvalue);
             break;
         case (UPGRADE_TYPE_EXPLODE):
-            gs_snprintf(text, TEXT_SIZE, "P EXPLODE+%i\n(%i->%i)", upgrade->ivalue, gd->player.player_explosion_radius, gd->player.player_explosion_radius + upgrade->ivalue);
+            gs_snprintf(text, TEXT_SIZE, "PROJECTILE EXPLODE+%i\n(%i->%i)", upgrade->ivalue, gd->player.player_explosion_radius, gd->player.player_explosion_radius + upgrade->ivalue);
             break;
         case (UPGRADE_TYPE_SHOOT_DELAY):
             gs_snprintf(text, TEXT_SIZE, "SHOOT DELAY-%.2f\n(%.2f->%.2f)", upgrade->fvalue, gd->player.player_shoot_delay, gd->player.player_shoot_delay - upgrade->fvalue);
             break;
         case (UPGRADE_TYPE_SHOOT_REFLECT):
-            gs_snprintf(text, TEXT_SIZE, "SHOT REFLECT+%.0f %%\n(%.0f%%->%.0f%%)", upgrade->fvalue*100, gd->player.player_projectile_reflect_chance*100, 100*(gd->player.player_projectile_reflect_chance + upgrade->fvalue));
+            gs_snprintf(text, TEXT_SIZE, "SHOT SPLIT CHANCE+%.0f %%\n(%.0f%%->%.0f%%)", upgrade->fvalue*100, gd->player.player_projectile_reflect_chance*100, 100*(gd->player.player_projectile_reflect_chance + upgrade->fvalue));
             break;
         case (UPGRADE_TYPE_SHOOT_REFLECT_AMOUNT):
-            gs_snprintf(text, TEXT_SIZE, "SHOT REFLECT AMOUNT+%i\n(%i->%i)", upgrade->ivalue, gd->player.player_projectile_reflect_amount, gd->player.player_projectile_reflect_amount + upgrade->ivalue);
+            gs_snprintf(text, TEXT_SIZE, "SHOT ONHIT SPLIT AMOUNT+%i\n(%i->%i)", upgrade->ivalue, gd->player.player_projectile_reflect_amount, gd->player.player_projectile_reflect_amount + upgrade->ivalue);
             break;
         case (UPGRADE_TYPE_LASER):
             gs_snprintf(text, TEXT_SIZE, "LASER TARGETS+%i \n(%i->%i)", upgrade->ivalue, gd->player.player_laser_lvl, gd->player.player_laser_lvl + upgrade->ivalue);

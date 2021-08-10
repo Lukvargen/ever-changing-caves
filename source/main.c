@@ -46,7 +46,6 @@ bool is_tile_solid(game_data_t* gd, int tile_x, int tile_y);
 void explode_tiles(game_data_t* gd, int tile_x, int tile_y, int radius);
 gs_vec2 gs_vec2_truncate(gs_vec2 v, float max_length);
 bool is_colliding(gs_vec2 p1, gs_vec2 p2, float r1, float r2);
-gs_vec2 get_world_mouse_pos();
 gs_vec2 steer(gs_vec2 from_pos, gs_vec2 target_pos, gs_vec2 velocity, float max_velocity, float max_force, float max_speed);
 void remove_entity(entity_t* arr[], int* arr_length, int* i);
 void entity_take_dmg(game_data_t* gd, entity_t* entity, int dmg, gs_vec2 hit_pos, gs_vec2 knock_dir);
@@ -208,13 +207,13 @@ void restart_game(game_data_t* gd)
 	gs_dyn_array_clear(gd->shop.all_upgrades);
 	shop_init_all_upgrades(gd);
 	spawn_player(gd);
-	gd->player.hp = 10;
 	gd->crystals_currency = 0;
 	gd->wave = 0;
-	//gd->player.player_laser_lvl = 2;
-	//next_wave(gd);
-	spawn_worm(gd, WORM_TYPE_BOSS, 15, gs_v2(RESOLUTION_X/2 + 128, RESOLUTION_Y/2), 16);
 
+
+	next_wave(gd);
+	//spawn_worm(gd, WORM_TYPE_BOSS, 15, gs_v2(RESOLUTION_X/2 + 128, RESOLUTION_Y/2), 16);
+	//spawn_turret(gd, gs_v2(RESOLUTION_X/2, RESOLUTION_Y/2), TURRET_TYPE_BOSS);
 }
 
 void update_tiles(game_data_t* gd, float delta)
@@ -254,16 +253,17 @@ void spawn_player(game_data_t* gd)
 
 
 	p->player_particle_emitter = spawn_particle_emitter(gd, &(particle_emitter_desc_t){
-		.particle_amount = 8,
-		.particle_color = gs_v4(0.1, 0.3, 0.1, 0.25),
-		.particle_lifetime = 0.25,
+		.particle_amount = 4,
+		.particle_color = gs_v4(0.15, 0.15, 0.15, 1),
+		.particle_lifetime = 0.4,
 		.particle_shink_out = true,
-		.particle_size = gs_v2(10, 10),
-		.particle_velocity = gs_v2(20, 0),
+		.particle_size = gs_v2(12, 12),
+		.particle_velocity = gs_v2(40, 0),
 		.rand_velocity_range = 0.75,
 		.rand_rotation_range = 2 * 3.14,
 		.position = gd->player.position
 	});
+	explode_tiles(gd, p->position.x/TILE_SIZE, p->position.y/TILE_SIZE, 8);
 }
 
 void update_player(game_data_t* gd, float delta)
@@ -344,7 +344,7 @@ void update_player(game_data_t* gd, float delta)
 	p->player_shoot_time += delta;
 	if (gs_platform_mouse_down(GS_MOUSE_LBUTTON) && p->player_shoot_time >= p->player_shoot_delay) {
 		p->player_shoot_time = 0.f;
-		gs_vec2 dir = gs_vec2_sub(get_world_mouse_pos(), *pos);
+		gs_vec2 dir = gs_vec2_sub(get_world_mouse_pos(gd), *pos);
 		dir = gs_vec2_norm(dir);
 		
 		gs_vec2 vel = gs_vec2_scale(dir, p->player_projectile_speed);
@@ -537,7 +537,7 @@ void update_projectiles(game_data_t* gd, float delta)
 						}
 						should_delete = true;
 						gd->shake_time = 0.05;
-						explode_tiles(gd, tile_x, tile_y, 5);
+						explode_tiles(gd, tile_x, tile_y, p->explode_radius);
 						gs_vec2 projectile_dir = gs_vec2_norm(p->velocity);
 						entity_take_dmg(gd, enemy,p->dmg, *pos, projectile_dir);
 						
@@ -648,10 +648,6 @@ void update_worms(game_data_t* gd, float delta)
 	int worms_size = gs_dyn_array_size(gd->worms);
 	for (int i = 0; i < worms_size; i++) {
 		entity_t* head = gd->worms[i];
-		
-		
-
-		
 
 		// .5 secounds delay after dead for death animation
 		if (head->dead) {
@@ -720,7 +716,6 @@ void update_worms(game_data_t* gd, float delta)
 				float length_devisor = 50.f;
 				if (head->worm_type == WORM_TYPE_BOSS) {
 					max_rot = 1;
-					//length_devisor = 100.f;
 				}
 				float rotation = diff_length / length_devisor;
 				if (rotation > max_rot)
@@ -809,8 +804,6 @@ void update_worms(game_data_t* gd, float delta)
 		
 		head->position.x += head->velocity.x * delta;
 		head->position.y += head->velocity.y * delta;
-
-		//head->worm_particle_emitter->position = head->position;
 
 		// segment follows parent
 		entity_t* parent = head;
@@ -919,11 +912,9 @@ void update_particle_emitters(game_data_t* gd, float delta)
 	}
 }
 
-
-
-
 void explode_tiles(game_data_t* gd, int tile_x, int tile_y, int radius)
 {
+	if (radius == 0) return;
 	for (int x = tile_x - radius; x < tile_x + radius+1; x++) {
 		for (int y = tile_y - radius; y < tile_y + radius+1; y++) {
 			if (x < 0 || y < 0 || x >= TILES_SIZE_X || y >= TILES_SIZE_Y)
@@ -983,13 +974,6 @@ void spawn_turret(game_data_t* gd, gs_vec2 pos, turret_type_t type)
 	float turret_shot_delay = 2.f;
 	float turret_burst_shoot_delay = TURRET_BURST_SHOT_DELAY;
 
-	
-	if (type == TURRET_TYPE_SPIN) {
-		color.z = 1.25;
-		turret_shot_delay = 0.f;
-		turret_burst_shoot_delay = 0.1;
-		hp = 8 * pow(1.2, gd->wave);
-	}
 	*turret = (entity_t) {
 		.position = pos,
 		.radius = 9,
@@ -999,8 +983,32 @@ void spawn_turret(game_data_t* gd, gs_vec2 pos, turret_type_t type)
 		.color = color,
 		.type = ENTITY_TYPE_TURRET,
 		.turret_type = type,
-		.dmg = dmg
+		.dmg = dmg,
+		.turret_burst_count = 3,
 	};
+	
+	if (type == TURRET_TYPE_SPIN) {
+		turret->color.z = 1.25;
+		turret->turret_shoot_delay = 0.f;
+		turret->turret_burst_shoot_delay = 0.1;
+		turret->hp = 8 * pow(1.2, gd->wave);
+	} else if (type == TURRET_TYPE_BOSS) {
+		turret->hp = 50 * pow(1.2, gd->wave);
+		turret->radius = 32;
+		turret->turret_shoot_delay = 3.f;
+		turret->turret_burst_shoot_delay = 0.05f;
+		turret->turret_burst_count = 30;
+		turret->color = gs_v4(0.7, 0.5, 0.7, 1.0);
+		//turret->turret
+		turret->turret_legs[0].position = gs_v2(pos.x - 28, pos.y-28);
+		turret->turret_legs[1].position = gs_v2(pos.x + 28, pos.y-28);
+		turret->turret_legs[2].position = gs_v2(pos.x - 28, pos.y+28);
+		turret->turret_legs[3].position = gs_v2(pos.x + 28, pos.y+28);
+		for (int i = 0; i < 4; i++) {
+			turret->turret_legs[i].target_position = turret->turret_legs[i].position;
+		}
+	}
+
 	
 	gs_dyn_array_push(gd->turrets, turret);
 }
@@ -1017,7 +1025,9 @@ void update_turrets(game_data_t* gd, float delta)
 		t->turret_time_since_spawn += delta;
 		
 		if (t->dead) {
-			spawn_crystals(gd, t->position, 7 * pow(1.05, gd->wave-1));
+			int crystal_amount = 7;
+			if (t->turret_type == TURRET_TYPE_BOSS) crystal_amount = 20;
+			spawn_crystals(gd, t->position, crystal_amount * pow(1.05, gd->wave-1));
 			spawn_particle_emitter(gd, &(particle_emitter_desc_t){
 				.explode = true,
 				.one_shot = true,
@@ -1045,6 +1055,11 @@ void update_turrets(game_data_t* gd, float delta)
 		} else if (t->turret_type == TURRET_TYPE_SPIN) {
 			t->turret_angle = t->turret_time_since_spawn*3 + sin(t->turret_time_since_spawn)*0.5;
 			target_dir = gs_v2(cos(t->turret_angle), sin(t->turret_angle));
+		} else if (t->turret_type == TURRET_TYPE_BOSS) {
+
+			target_dir = gs_vec2_sub(gs_v2(player_pos.x + gd->player.velocity.x*0.3, player_pos.y + gd->player.velocity.y*0.3), t->position);
+			target_dir = gs_vec2_norm(target_dir);
+
 		}
 
 		if (t->turret_time_since_spawn < TURRET_ANIMATION_SPAWN_TIME)
@@ -1056,12 +1071,20 @@ void update_turrets(game_data_t* gd, float delta)
 				t->turret_shot_count = 0;
 				t->turret_shooting = true;
 			}
+
+			if (t->turret_type == TURRET_TYPE_BOSS) {
+				t->velocity = steer(t->position, player_pos, t->velocity, 200, 3, 50);
+			}
+		} else {
+			t->velocity.x *= delta*4;
+			t->velocity.y *= delta*4;
 		}
 		if (t->turret_shooting) {
 			t->turret_shoot_time += delta;
 
 			if (t->turret_shoot_time >= t->turret_burst_shoot_delay) {
 				t->turret_shoot_time = 0.f;
+				t->turret_shot_count++;
 				// spawn projectile
 				switch (t->turret_type) {
 					gs_vec2 projectile_vel;
@@ -1112,18 +1135,100 @@ void update_turrets(game_data_t* gd, float delta)
 							})
 						});
 						break;
+					case (TURRET_TYPE_BOSS):
+						explode_tiles(gd, t->position.x/TILE_SIZE,t->position.y/TILE_SIZE, 8);
+						projectile_vel = gs_vec2_scale(target_dir, 300);
+						int p_radius_mul = 1;
+						int explode_radius = 0;
+						if (t->turret_shot_count >= t->turret_burst_count) {
+							p_radius_mul = 2;
+							explode_radius = 8;
+						}
+						spawn_projectile(gd, &(projectile_t){
+							.enemy_created = true,
+							.position = t->position,
+							.velocity = projectile_vel,
+							.radius = 4 * p_radius_mul,
+							.accell = 800,
+							.max_life_time = 0.75,
+							.dmg = t->dmg * p_radius_mul,
+							.go_through_walls = false,
+							.explode_radius = explode_radius,
+							.color = gs_v4(0.6, 0.2, 0.6, 1.0),
+							.particle_emitter = spawn_particle_emitter(gd, &(particle_emitter_desc_t){
+								.particle_amount = 16,
+								.particle_color = gs_v4(0.3, 0.1, 0.3, 1.0),
+								.particle_lifetime = 0.15,
+								.particle_shink_out = true,
+								.particle_size = gs_v2(16*p_radius_mul, 16*p_radius_mul),
+								.position = t->position
+								
+							})
+						});
+						break;
 
 				}
 				
 
-				t->turret_shot_count++;
-				if (t->turret_shot_count >= TURRET_BURST_COUNT) {
+				
+				if (t->turret_shot_count >= t->turret_burst_count) {
 					t->turret_shot_count = 0;
 					t->turret_shooting = false;
 				}
 			}
 		}
 		
+		t->position.x += t->velocity.x * delta;
+		t->position.y += t->velocity.y * delta;
+
+		for (int i = 0; i < 4; i++) {
+			turret_leg_t* leg = &t->turret_legs[i];
+			if (!leg->moving) {
+				gs_vec2 leg_offset;
+				switch (i) {
+					case 0:
+						leg_offset = gs_v2(-26, -26);
+						break;
+					case 1:
+						leg_offset = gs_v2(26, -26);
+						break;
+					case 2:
+						leg_offset = gs_v2(-26, +26);
+						break;
+					case 3:
+						leg_offset = gs_v2(26, +26);
+						break;
+				}
+				float leg_dist = gs_vec2_dist(leg->position, gs_v2(t->position.x+leg_offset.x, t->position.y+leg_offset.y));
+				leg->time_moving += delta;
+				//if (leg_dist > 16) {
+					if (leg->time_moving >= 0) {
+						gs_vec2 vel_dir = gs_vec2_norm(t->velocity);
+						leg->target_position.x = t->position.x + leg_offset.x + t->velocity.x*0.5;
+						leg->target_position.y = t->position.y + leg_offset.y + t->velocity.y*0.5;
+						leg->moving = true;
+						leg->animation_position = leg->position;
+						leg->time_moving = 0;
+
+					}
+				//}
+
+			} else {
+				// move leg
+				float leg_move_time = 0.5;
+
+				leg->time_moving += delta;
+				if (leg->time_moving <= leg_move_time) {
+					leg->position.x = gs_ease_cubic_in_out(leg->time_moving, leg->animation_position.x, leg->target_position.x-leg->animation_position.x, leg_move_time);
+					leg->position.y = gs_ease_cubic_in_out(leg->time_moving, leg->animation_position.y, leg->target_position.y-leg->animation_position.y, leg_move_time);
+				}
+
+				if (leg->time_moving >= leg_move_time) {
+					leg->moving = false;
+					leg->time_moving = -stb_frand()*0.25;
+				}
+			}
+		}
 
 	}
 }
@@ -1356,7 +1461,8 @@ void entity_take_dmg(game_data_t* gd, entity_t* entity, int dmg, gs_vec2 hit_pos
 	}
 	entity->flash = 1.0;
 	
-	entity->velocity = gs_vec2_add(entity->velocity, gs_vec2_scale(knock_dir, 200));
+	if (entity->type != ENTITY_TYPE_TURRET)
+		entity->velocity = gs_vec2_add(entity->velocity, gs_vec2_scale(knock_dir, 200));
 	
 	
 	gs_vec2 particle_vel = knock_dir;
@@ -1460,10 +1566,10 @@ void update_wave_system(game_data_t* gd, float delta)
 				gs_vec2 spawn_pos;
 				switch (type) {
 					case (ENTITY_TYPE_WORM):
-						spawn_pos.x = RESOLUTION_X * stb_frand();
+						spawn_pos.x = WORLD_SIZE_X * stb_frand();
 						spawn_pos.y = 0;
 						if (stb_frand() > 0.5) {
-							spawn_pos.y = RESOLUTION_Y;
+							spawn_pos.y = WORLD_SIZE_Y;
 						}
 						worm_type_t worm_type = WORM_TYPE_NORMAL;
 						if (stb_frand() > 0.5)
@@ -1471,8 +1577,8 @@ void update_wave_system(game_data_t* gd, float delta)
 						spawn_worm(gd, worm_type, 4, spawn_pos, 6);
 						break;
 					case (ENTITY_TYPE_TURRET):
-						spawn_pos.x = (RESOLUTION_X-20) * stb_frand() + 20;
-						spawn_pos.y = (RESOLUTION_Y-20) * stb_frand() + 20;
+						spawn_pos.x = (WORLD_SIZE_X-20) * stb_frand() + 20;
+						spawn_pos.y = (WORLD_SIZE_Y-20) * stb_frand() + 20;
 						turret_type_t type = TURRET_TYPE_NORMAL;
 						if (stb_frand() >= 0.6) {
 							type = TURRET_TYPE_SPIN;
@@ -1484,23 +1590,32 @@ void update_wave_system(game_data_t* gd, float delta)
 						if (stb_frand() > 0.5) {
 							if (stb_frand() > 0.5) {
 								spawn_pos.x = 20;
-								spawn_pos.y = (RESOLUTION_Y-40) * stb_frand() + 20;
+								spawn_pos.y = (WORLD_SIZE_Y-40) * stb_frand() + 20;
 							} else {
-								spawn_pos.x = RESOLUTION_X - 20;
-								spawn_pos.y = (RESOLUTION_Y-40) * stb_frand() + 20;
+								spawn_pos.x = WORLD_SIZE_X - 20;
+								spawn_pos.y = (WORLD_SIZE_Y-40) * stb_frand() + 20;
 							}
 						} else {
 							if (stb_frand() > 0.5) {
 								spawn_pos.y = 20;
-								spawn_pos.x = (RESOLUTION_X-40) * stb_frand() + 20;
+								spawn_pos.x = (WORLD_SIZE_X-40) * stb_frand() + 20;
 							} else {
-								spawn_pos.y = RESOLUTION_Y - 20;
-								spawn_pos.x = (RESOLUTION_X-40) * stb_frand() + 20;
+								spawn_pos.y = WORLD_SIZE_Y - 20;
+								spawn_pos.x = (WORLD_SIZE_X-40) * stb_frand() + 20;
 							}
 						}
 						int orb_type = stb_rand() % ORB_TYPE_SIZE;
 						spawn_orb(gd, orb_type, spawn_pos);
-						break;	
+						break;
+					case (ENTITY_TYPE_BOSS):
+						spawn_pos.x = 50 + (WORLD_SIZE_X-100) * stb_frand();
+						spawn_pos.y = 50 + (WORLD_SIZE_Y-100) * stb_frand();
+						if (stb_frand() > 0.5) {
+							spawn_worm(gd, WORM_TYPE_BOSS, 15, spawn_pos, 16);
+						} else {
+							spawn_turret(gd, spawn_pos, TURRET_TYPE_BOSS);
+						}
+						break;
 				}
 			}
 		} else {
@@ -1533,10 +1648,18 @@ void next_wave(game_data_t* gd)
 	gd->wave++;
 	gd->open_shop_timer = 0.f;
 	int worm_amount = 2 * pow(1.1, gd->wave);
-	append_enemies_to_spawn(gd, ENTITY_TYPE_WORM, worm_amount);
 	int turret_amount = 1.5 * pow(1.1, gd->wave);
-	append_enemies_to_spawn(gd, ENTITY_TYPE_TURRET, turret_amount);
 	int orb_amount = 1 * pow(1.1, gd->wave);
+
+	if (gd->wave % 5 == 0) {
+		append_enemies_to_spawn(gd, ENTITY_TYPE_BOSS, gd->wave/5);
+		worm_amount /= 3;
+		turret_amount /= 3;
+		orb_amount /= 3;
+	} 
+
+	append_enemies_to_spawn(gd, ENTITY_TYPE_WORM, worm_amount);
+	append_enemies_to_spawn(gd, ENTITY_TYPE_TURRET, turret_amount);
 	append_enemies_to_spawn(gd, ENTITY_TYPE_ORB, orb_amount);
 
 	unlock_upgrades(gd);
@@ -1562,7 +1685,12 @@ bool is_tile_solid(game_data_t* gd, int tile_x, int tile_y)
 	return gd->tiles[tile_x][tile_y].value < TILE_AIR_THRESHOLD;
 }
 
-gs_vec2 get_world_mouse_pos()
+gs_vec2 get_world_mouse_pos(game_data_t* gd)
+{
+	gs_vec2 m_pos = get_local_mouse_pos();
+	return gs_vec2_add(m_pos, gd->camera_pos);
+}
+gs_vec2 get_local_mouse_pos()
 {
 	gs_vec2 platform_m_pos = gs_platform_mouse_positionv();
 	gs_vec2 window_size = window_size();

@@ -10,8 +10,16 @@
 
 
 gs_asset_texture_t circle_16px;
+gs_asset_texture_t player_body_png;
+gs_asset_texture_t player_hands_png;
 gs_asset_texture_t turret_png;
 gs_asset_texture_t turret_barrel_png;
+
+gs_asset_texture_t turret_boss_feet_png;
+gs_asset_texture_t turret_boss_base_png;
+gs_asset_texture_t turret_boss_barrel_png;
+gs_asset_texture_t turret_boss_top_png;
+
 gs_asset_texture_t worm_png;
 gs_asset_texture_t worm_boss_png;
 gs_asset_texture_t worm_boss_head_png;
@@ -48,28 +56,21 @@ void graphics_init(game_data_t* gd)
 		.wrap_t = GS_GRAPHICS_TEXTURE_WRAP_REPEAT
 	};
 	gs_asset_texture_load_from_file("./assets/Circle16.png", &circle_16px, &desc, true, false);
+	gs_asset_texture_load_from_file("./assets/PlayerBody.png", &player_body_png, &desc, true, false);
+	gs_asset_texture_load_from_file("./assets/PlayerHands.png", &player_hands_png, &desc, true, false);
 	gs_asset_texture_load_from_file("./assets/Turret.png", &turret_png, &desc, true, false);
 	gs_asset_texture_load_from_file("./assets/TurretBarrel.png", &turret_barrel_png, &desc, true, false);
 	gs_asset_texture_load_from_file("./assets/Worm.png", &worm_png, &desc, true, false);
+	
 	
 	gs_asset_texture_load_from_file("./assets/WormBoss.png", &worm_boss_png, &desc, true, false);
 	gs_asset_texture_load_from_file("./assets/WormBossHead.png", &worm_boss_head_png, &desc, true, false);
 	gs_asset_texture_load_from_file("./assets/WormBossTail.png", &worm_boss_tail_png, &desc, true, false);
 
-	/*gs_asset_texture_load_from_file("./assets/WormBoss.png", &worm_boss_png, &(gs_graphics_texture_desc_t){
-		.format = GS_GRAPHICS_TEXTURE_FORMAT_RGBA8,
-		.min_filter = GS_GRAPHICS_TEXTURE_FILTER_LINEAR,
-		.mag_filter = GS_GRAPHICS_TEXTURE_FILTER_LINEAR,
-		.wrap_s = GS_GRAPHICS_TEXTURE_WRAP_REPEAT,
-		.wrap_t = GS_GRAPHICS_TEXTURE_WRAP_REPEAT
-	}, true, false);*/
-	/*
-	t->desc.format = GS_GRAPHICS_TEXTURE_FORMAT_RGBA8;
-	t->desc.min_filter = GS_GRAPHICS_TEXTURE_FILTER_LINEAR;
-	t->desc.mag_filter = GS_GRAPHICS_TEXTURE_FILTER_LINEAR;
-	t->desc.wrap_s = GS_GRAPHICS_TEXTURE_WRAP_REPEAT;
-	t->desc.wrap_t = GS_GRAPHICS_TEXTURE_WRAP_REPEAT;
-	*/
+	gs_asset_texture_load_from_file("./assets/TurretBossFeet.png", &turret_boss_feet_png, &desc, true, false);
+	gs_asset_texture_load_from_file("./assets/TurretBossBase.png", &turret_boss_base_png, &desc, true, false);
+	gs_asset_texture_load_from_file("./assets/TurretBossBarrel.png", &turret_boss_barrel_png, &desc, true, false);
+	gs_asset_texture_load_from_file("./assets/TurretBossTop.png", &turret_boss_top_png, &desc, true, false);
 
 
 	gs_asset_font_load_from_file("./assets/joystix monospace.ttf", &font_large, 32);
@@ -82,15 +83,12 @@ void graphics_init(game_data_t* gd)
 	init_particles(gd);
 	init_entities(gd);
 	
-
 }
 
 void draw_game(game_data_t* gd)
 {
 	gs_command_buffer_t* gcb = &gd->gcb;
 	gs_immediate_draw_t* gsi = &gd->gsi;
-
-	
 
 	gs_graphics_clear_desc_t clear = (gs_graphics_clear_desc_t) {
 		.actions = &(gs_graphics_clear_action_t){.color = {0.05f, 0.05f, 0.05f, 1.f}}
@@ -103,9 +101,19 @@ void draw_game(game_data_t* gd)
 	gs_vec2 ws = window_size();
 	gs_vec2 fbs = gs_platform_framebuffer_sizev(gs_platform_main_window());
 
-	float diff_x = ws.x / RESOLUTION_X;
-	float diff_y = ws.y / RESOLUTION_Y;
-	gd->projection = gs_mat4_ortho(0, RESOLUTION_X, RESOLUTION_Y, 0, -100, 100);
+	gs_vec2 p_pos = gd->player.position;
+	gs_vec2 half_res = {RESOLUTION_X/2, RESOLUTION_Y/2};
+	gd->camera_pos = (gs_vec2){p_pos.x - half_res.x, p_pos.y - half_res.y};
+	gs_vec2 mouse_dif = gs_vec2_sub(get_world_mouse_pos(gd), gd->player.position);
+	gd->camera_pos.x += mouse_dif.x * 0.1;
+	gd->camera_pos.y += mouse_dif.y * 0.1;
+
+	if (gd->camera_pos.x < 0) gd->camera_pos.x = 0;
+	if (gd->camera_pos.x + RESOLUTION_X > WORLD_SIZE_X) gd->camera_pos.x = WORLD_SIZE_X - RESOLUTION_X;
+	if (gd->camera_pos.y < 0) gd->camera_pos.y = 0;
+	if (gd->camera_pos.y + RESOLUTION_Y > WORLD_SIZE_Y) gd->camera_pos.y = WORLD_SIZE_Y - RESOLUTION_Y;
+
+	gd->projection = gs_mat4_ortho(gd->camera_pos.x, RESOLUTION_X + gd->camera_pos.x, RESOLUTION_Y + gd->camera_pos.y, gd->camera_pos.y, -100, 100);
 	gsi_ortho(gsi, 0, RESOLUTION_X, RESOLUTION_Y, 0, 0, 100);
 
 
@@ -125,13 +133,13 @@ void draw_game(game_data_t* gd)
 		r -= padding;
 		t += padding;
 		gsi_rect(gsi, l, b, r, t,
-		200, 0, 0, 255, GS_GRAPHICS_PRIMITIVE_TRIANGLES);
-		float percent = gd->player.hp / (gd->player.max_hp*1.0f);
+		204, 41, 54, 255, GS_GRAPHICS_PRIMITIVE_TRIANGLES); //red
+		float percent = gd->player.hp / (gd->player.max_hp*1.0f); 
 		if (percent < 0)
 			percent = 0.f;
 		r = l + (r-l) * percent;
 		gsi_rect(gsi, l, b, r, t,
-		0, 200, 0, 255, GS_GRAPHICS_PRIMITIVE_TRIANGLES);
+		71, 160, 37, 255, GS_GRAPHICS_PRIMITIVE_TRIANGLES); //green
 		gsi_rect(gsi, l, b, r, t,
 		150, 200, 150, 255, GS_GRAPHICS_PRIMITIVE_LINES);
 	}
@@ -148,10 +156,12 @@ void draw_game(game_data_t* gd)
 	gsi_text(gsi, RESOLUTION_X-80, 20, wave_str, &font_medium, false, 255, 255, 255, 255);
 	
 	gsi_defaults(gsi);
+	gs_vec2 m_pos = get_local_mouse_pos(gd);
 
 	if (gd->shop.visible) {
 		int center_x = RESOLUTION_X / 2;
 		int upgrade_panel_size_x = RESOLUTION_X/4;
+		
 		
 		gs_vec2 panel_pos = gs_v2(upgrade_panel_size_x / 2 - 10, 150);
 		for (int i = 0; i < SHOP_UPGRADES_SIZE; i++) {
@@ -196,7 +206,7 @@ void draw_game(game_data_t* gd)
 				btn_color = gs_color(20, 60, 20, 255);
 			};
 
-			if (ui_button(gsi, &(ui_control_t){
+			if (ui_button(gsi, m_pos, &(ui_control_t){
 				.visible = visible,
 				.font = font_small,
 				.color = btn_color,
@@ -218,7 +228,7 @@ void draw_game(game_data_t* gd)
 			btn_color = gs_color(20, 60, 20, 255);
 		};
 		gs_snprintfc(heal_text, TEXT_SIZE, "HEAL\nCOST %i", heal_cost);
-		if (ui_button(gsi, &(ui_control_t){
+		if (ui_button(gsi,m_pos, &(ui_control_t){
 			.visible = true,
 			.text = heal_text,
 			.pos = gs_v2(RESOLUTION_X/2 - 50, 100),
@@ -246,7 +256,7 @@ void draw_game(game_data_t* gd)
 			btn_color = gs_color(20, 60, 20, 255);
 		};
 		gs_snprintfc(reroll_text, TEXT_SIZE, "REROLL\nCOST %i", reroll_cost);
-		if (ui_button(gsi, &(ui_control_t){
+		if (ui_button(gsi,m_pos, &(ui_control_t){
 			.visible = true,
 			.text = reroll_text,
 			.pos = gs_v2(RESOLUTION_X/2 + 50 + 15, 100),
@@ -270,7 +280,7 @@ void draw_game(game_data_t* gd)
 			
 		}
 
-		if (ui_button(gsi, &(ui_control_t){
+		if (ui_button(gsi,m_pos, &(ui_control_t){
 			.visible = true,
 			.text = "NEXT WAVE",
 			.pos = gs_v2(RESOLUTION_X/2, 250),
@@ -288,25 +298,13 @@ void draw_game(game_data_t* gd)
 	}
 
 
-	gsi_blend_enabled(gsi, true);
-	for (int i = 0; i < gs_dyn_array_size(gd->lasers); i++) {
-		laser_t* laser = &gd->lasers[i];
-		gs_color_t color = laser->color;
-		color.a = 255*(1-(laser->time_alive / laser->max_time_alive));
-		for (int j = 0; j < gs_dyn_array_size(laser->points) -1; j++) {
-			gs_vec2 p1 = laser->points[j];
-			gs_vec2 p2 = laser->points[j+1];
-			gsi_linev(gsi, p1, p2, color);
-		}
-	}
-
 	
 	if (gd->game_over) {
 		gs_vec2 dims = gs_asset_font_get_text_dimensions(&font_large, "GAME OVER");
 		int y = (RESOLUTION_Y - dims.y) / 2;
 		gsi_text(gsi, (RESOLUTION_X - dims.x) / 2, y, "GAME OVER", &font_large, false, 255, 255, 255, 255);
 		gsi_defaults(gsi);
-		if (ui_button(gsi, &(ui_control_t){
+		if (ui_button(gsi,m_pos, &(ui_control_t){
 			.visible = true,
 			.text = "RESTART",
 			.pos = gs_v2(RESOLUTION_X/2, y + dims.y +1 ),
@@ -322,6 +320,19 @@ void draw_game(game_data_t* gd)
 		}
 	}
 
+	// lasers
+	gsi_blend_enabled(gsi, true);
+	gsi_ortho(gsi, gd->camera_pos.x, RESOLUTION_X + gd->camera_pos.x, RESOLUTION_Y + gd->camera_pos.y, gd->camera_pos.y, 0, 100);
+	for (int i = 0; i < gs_dyn_array_size(gd->lasers); i++) {
+		laser_t* laser = &gd->lasers[i];
+		gs_color_t color = laser->color;
+		color.a = 255*(1-(laser->time_alive / laser->max_time_alive));
+		for (int j = 0; j < gs_dyn_array_size(laser->points) -1; j++) {
+			gs_vec2 p1 = laser->points[j];
+			gs_vec2 p2 = laser->points[j+1];
+			gsi_linev(gsi, p1, p2, color);
+		}
+	}
 
 	// render to frame buffer
 	gs_graphics_begin_render_pass(gcb, gd->rp);
@@ -378,12 +389,6 @@ void init_tiles(game_data_t* gd)
 			tile_v_positions[index+6] = x+1.f;
 			tile_v_positions[index+7] = y+1.f;
 			
-			//index = 4*3*(x + y*TILES_SIZE_X);
-			//for (int i = 0; i < 4; i++) {
-			//	tile_v_colors[index+i*3+0] = 0.2;
-			//	tile_v_colors[index+i*3+1] = 0.2;
-			//	tile_v_colors[index+i*3+2] = 1;
-			//}
 		}
 	}
 
@@ -403,17 +408,7 @@ void init_tiles(game_data_t* gd)
 		},
 		.usage = GS_GRAPHICS_BUFFER_USAGE_DYNAMIC
 	});
-	/*
-	gs_graphics_vertex_buffer_request_update(&gd->gcb, gd->tile_vbo, &(gs_graphics_vertex_buffer_desc_t){
-		.data = tile_v_colors,
-		.size = sizeof(tile_v_colors),
-		.update = {
-			.offset = sizeof(tile_v_positions),
-			.type = GS_GRAPHICS_BUFFER_UPDATE_SUBDATA
-		},
-		.usage = GS_GRAPHICS_BUFFER_USAGE_DYNAMIC
-	});
-	*/
+
 	gd->tile_ibo = gs_graphics_index_buffer_create(
 		&(gs_graphics_index_buffer_desc_t) {
 			.data = tile_i_data,
@@ -869,22 +864,47 @@ void draw_entities(game_data_t* gd, gs_command_buffer_t* gcb)
 
 	// Player
 	{
-		color = gs_v4(50/255.0, 150/255.0, 50/255.0, 1.0);
+		tex = player_hands_png;
+		//color = gs_v4(50/255.0, 150/255.0, 50/255.0, 1.0);
 		flash = gd->player.flash;
-		float size = gd->player.radius * 2;
-		gs_mat4 translation = gs_mat4_translate(gd->player.position.x, gd->player.position.y, 0.0f);
-		gs_mat4 model = gs_mat4_mul(translation, gs_mat4_scale(size, size, 0));
-		mvp = gs_mat4_mul(gd->projection, model);
+		float size = 14;
+		//gs_mat4 translation = gs_mat4_translate(gd->player.position.x, gd->player.position.y, 0.0f);
+		//gs_mat4 model = gs_mat4_mul(translation, gs_mat4_scale(size, size, 0));
+		//mvp = gs_mat4_mul(gd->projection, model);
 
+		//gs_graphics_apply_bindings(gcb, &binds);
+		//gs_graphics_draw(gcb, &(gs_graphics_draw_desc_t){.start = 0, .count = 6});
+
+		//size += 2;
+		color = gs_v4(1, 1, 1, 1);
+		gs_mat4 translation = gs_mat4_translate(gd->player.position.x, gd->player.position.y, 0.0f);
+		//gs_mat4 model = gs_mat4_mul(translation, gs_mat4_scale(size, size, 0));
+		//mvp = gs_mat4_mul(gd->projection, model);
+		gs_vec2 m_pos = get_world_mouse_pos(gd);
+		float angle = atan2f(m_pos.y - gd->player.position.y, m_pos.x - gd->player.position.x);
+		if (gs_platform_mouse_down(GS_MOUSE_LBUTTON)) {
+			angle += sin(gs_platform_elapsed_time()*0.015) * 0.5;
+			size += abs(sin(gs_platform_elapsed_time()*0.02)) * 2;
+		}
+		gs_mat4 rotation = gs_mat4_rotatev(angle, gs_v3(0,0,1));
+		mvp = gs_mat4_mul_list(4,
+			gd->projection,
+			translation,
+			rotation,
+			gs_mat4_scale(size, size, 0)
+		);
 		gs_graphics_apply_bindings(gcb, &binds);
 		gs_graphics_draw(gcb, &(gs_graphics_draw_desc_t){.start = 0, .count = 6});
-
-		size += 2;
-		color = gs_v4(1, 1, 0, 0.2);
-		translation = gs_mat4_translate(gd->player.position.x, gd->player.position.y, 0.0f);
-		model = gs_mat4_mul(translation, gs_mat4_scale(size, size, 0));
-		mvp = gs_mat4_mul(gd->projection, model);
-
+		size = 14;
+		tex = player_body_png;
+		angle = atan2f(m_pos.y - gd->player.position.y, m_pos.x - gd->player.position.x);
+		rotation = gs_mat4_rotatev(angle, gs_v3(0,0,1));
+		mvp = gs_mat4_mul_list(4,
+			gd->projection,
+			translation,
+			rotation,
+			gs_mat4_scale(size, size, 0)
+		);
 		gs_graphics_apply_bindings(gcb, &binds);
 		gs_graphics_draw(gcb, &(gs_graphics_draw_desc_t){.start = 0, .count = 6});
 
@@ -985,11 +1005,11 @@ void draw_entities(game_data_t* gd, gs_command_buffer_t* gcb)
 
 	
 	
+	// draw feet, base, barrel, top
 
 	// turrets
-	tex = turret_png;
-	int turret_size = turret_png.desc.width;
-	int turret_barrel_size = turret_barrel_png.desc.width;
+	
+	
 	int t_size = gs_dyn_array_size(gd->turrets);
 	for (int i = 0; i < t_size; i++) {
 		entity_t* t = gd->turrets[i];
@@ -997,35 +1017,80 @@ void draw_entities(game_data_t* gd, gs_command_buffer_t* gcb)
 		color =  t->color;
 		flash = t->flash;
 		tex = turret_png;
-
-		gs_mat4 translation = gs_mat4_translate(t->position.x, t->position.y, 0.0f);
-
+		//if (t->turret_type)
+		int turret_size = turret_png.desc.width;
+		if (t->turret_type == TURRET_TYPE_BOSS) turret_size = turret_boss_base_png.desc.width;
 		float size = turret_size * gs_min(1.0, t->turret_time_since_spawn / TURRET_ANIMATION_SPAWN_TIME);
-		gs_mat4 model = gs_mat4_mul_list(2, translation, gs_mat4_scale(size, size, 0));
 
-		mvp = gs_mat4_mul(gd->projection, model);
+		if (t->turret_type == TURRET_TYPE_BOSS) { // draw  legs
+			tex = turret_boss_feet_png;
+			for (int i = 0; i < 4; i++) {
+				turret_leg_t* leg = &t->turret_legs[i];
+				gs_mat4 translation = gs_mat4_translate(leg->position.x, leg->position.y, 0.0f);
+				mvp = gs_mat4_mul_list(3,
+					gd->projection,
+					translation,
+					gs_mat4_scale(size, size, 0)
+				);
 
-		gs_graphics_apply_bindings(gcb, &binds);
-		gs_graphics_draw(gcb, &(gs_graphics_draw_desc_t){.start = 0, .count = 6});
+				gs_graphics_apply_bindings(gcb, &binds);
+				gs_graphics_draw(gcb, &(gs_graphics_draw_desc_t){.start = 0, .count = 6});
+			} 
 
-		// barrel
-		tex = turret_barrel_png;
-		gs_mat4 rot = gs_mat4_rotate(t->turret_angle, 0, 0, 1);
+		}
 
-		float time_since_shot = t->turret_shoot_time;
-		float offset_power = (1- gs_min(time_since_shot/TURRET_BURST_SHOT_DELAY, 1.f));
-		float x_offset = cos(t->turret_angle) * -5 * offset_power;
-		float y_offset = sin(t->turret_angle) * -5 * offset_power;
-		
-		
-		translation = gs_mat4_translate(t->position.x + x_offset, t->position.y + y_offset, 0.0f);
-		size = turret_barrel_size * gs_min(1.0, t->turret_time_since_spawn / TURRET_ANIMATION_SPAWN_TIME);
-		model = gs_mat4_mul_list(3, translation, gs_mat4_scale(size, size, 0), rot);
+		{ // draw base
+			tex = turret_png;
+			if (t->turret_type == TURRET_TYPE_BOSS) tex = turret_boss_base_png;
+			gs_mat4 translation = gs_mat4_translate(t->position.x, t->position.y, 0.0f);
+			mvp = gs_mat4_mul_list(3,
+				gd->projection,
+				translation,
+				gs_mat4_scale(size, size, 0)
+			);
 
-		mvp = gs_mat4_mul(gd->projection, model);
+			gs_graphics_apply_bindings(gcb, &binds);
+			gs_graphics_draw(gcb, &(gs_graphics_draw_desc_t){.start = 0, .count = 6});
+		}
 
-		gs_graphics_apply_bindings(gcb, &binds);
-		gs_graphics_draw(gcb, &(gs_graphics_draw_desc_t){.start = 0, .count = 6});
+		{ // draw barrel
+			tex = turret_barrel_png;
+			if (t->turret_type == TURRET_TYPE_BOSS) tex = turret_boss_barrel_png;
+			gs_mat4 rot = gs_mat4_rotate(t->turret_angle, 0, 0, 1);
+
+			float time_since_shot = t->turret_shoot_time;
+			float offset_power = (1- gs_min(time_since_shot/TURRET_BURST_SHOT_DELAY, 1.f));
+			float x_offset = cos(t->turret_angle) * -5 * offset_power;
+			float y_offset = sin(t->turret_angle) * -5 * offset_power;
+			
+			gs_mat4 translation = gs_mat4_translate(t->position.x + x_offset, t->position.y + y_offset, 0.0f);
+			mvp = gs_mat4_mul_list(4,
+				gd->projection,
+				translation,
+				rot,
+				gs_mat4_scale(size, size, 0)
+			);
+
+			gs_graphics_apply_bindings(gcb, &binds);
+			gs_graphics_draw(gcb, &(gs_graphics_draw_desc_t){.start = 0, .count = 6});
+		}
+
+		{ // draw top
+			if (t->turret_type == TURRET_TYPE_BOSS) {
+				tex = turret_boss_top_png;
+				gs_mat4 translation = gs_mat4_translate(t->position.x, t->position.y, 0.0f);
+				mvp = gs_mat4_mul_list(3,
+					gd->projection,
+					translation,
+					gs_mat4_scale(size, size, 0)
+				);
+
+				gs_graphics_apply_bindings(gcb, &binds);
+				gs_graphics_draw(gcb, &(gs_graphics_draw_desc_t){.start = 0, .count = 6});
+			}
+
+		}
+
 	}
 
 	// orbs
