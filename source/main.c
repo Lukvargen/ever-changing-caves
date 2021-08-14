@@ -98,7 +98,7 @@ void init()
 	graphics_init(gd);
 	spawn_player(gd);
 	restart_game(gd);
-	gd->crystals_currency = 0;
+	//gd->crystals_currency = 1000;
 	shop_init_all_upgrades(gd);
 	//shop_show(gd);
 }
@@ -209,6 +209,8 @@ void restart_game(game_data_t* gd)
 	spawn_player(gd);
 	gd->crystals_currency = 0;
 	gd->wave = 0;
+	//gd->player.player_laser_lvl = 2;
+	//gd->player.dmg = 3;
 
 
 	next_wave(gd);
@@ -221,7 +223,7 @@ void update_tiles(game_data_t* gd, float delta)
 	for (int x = 0; x < TILES_SIZE_X; x++) {
 		for (int y = 0; y < TILES_SIZE_Y; y++) {
 			tile_t* tile = &gd->tiles[x][y];
-			tile->noise_value = (stb_perlin_noise3(x*0.1, y*0.1, gd->time * 0.15, 0, 0, 0) + 1) / 2.f;
+			tile->noise_value = (stb_perlin_noise3(x*0.1, y*0.1, gd->time * 0.10, 0, 0, 0) + 1) / 2.f;
 			tile->destruction_value -= 0.1 * delta;
 			if (tile->destruction_value < 0) tile->destruction_value = 0;
 			tile->value = tile->noise_value + tile->destruction_value;
@@ -239,9 +241,15 @@ void spawn_player(game_data_t* gd)
 	p->position.x = RESOLUTION_X / 2;
 	p->position.y = RESOLUTION_Y / 2;
 	p->radius = 4.f;
-	p->max_hp = 10;
+
+	p->player_hp_multiplier = 1.f;
+	p->player_base_hp = 10;
+	p->max_hp = p->player_base_hp * p->player_hp_multiplier;
 	p->hp = p->max_hp;
-	p->dmg = 1;
+	p->player_base_dmg = 1;
+	p->player_dmg_multiplier = 1.f;
+	p->dmg = p->player_base_dmg * p->player_dmg_multiplier;
+
 	p->player_projectile_lifetime = PLAYER_BASE_PROJECTILE_LIFETIME;
 	p->player_projectile_speed = PLAYER_BASE_PROJECITLE_SPEED;
 	p->player_projectile_accel = PLAYER_BASE_PROJECTILE_ACCELL;
@@ -249,7 +257,7 @@ void spawn_player(game_data_t* gd)
 	p->player_shoot_delay = PLAYER_BASE_SHOOT_DELAY;
 	p->player_projectile_reflect_chance = 0.f;
 	p->player_projectile_reflect_amount = 1;
-	gd->player.player_laser_lvl = 0;
+	p->player_laser_lvl = 0;
 
 
 	p->player_particle_emitter = spawn_particle_emitter(gd, &(particle_emitter_desc_t){
@@ -306,7 +314,7 @@ void update_player(game_data_t* gd, float delta)
 	int tile_x = pos->x/TILE_SIZE;
 	int tile_y = pos->y/TILE_SIZE;
 	if (is_tile_solid(gd, tile_x, tile_y)) {
-		entity_take_dmg(gd, p, p->max_hp * 0.1, p->position, gs_v2(1,0)); //gs_v2(stb_frand(), stb_frand()));
+		//entity_take_dmg(gd, p, p->max_hp * 0.1, p->position, gs_v2(1,0)); //gs_v2(stb_frand(), stb_frand()));
 		
 		explode_tiles(gd, tile_x, tile_y, 3);
 	} else {
@@ -652,11 +660,14 @@ void update_worms(game_data_t* gd, float delta)
 		// .5 secounds delay after dead for death animation
 		if (head->dead) {
 			head->dead_timer += delta;
-			//head->worm_particle_emitter->emitting = false;
 			float death_timer_max = 0.5f;
-			if (head->worm_type == WORM_TYPE_BOSS) death_timer_max = 0.1;
+			int base_crystal_amount = 5;
+			if (head->worm_type == WORM_TYPE_BOSS) {
+				base_crystal_amount = 3;
+				death_timer_max = 0.1;
+			} 
 			if (head->dead_timer > death_timer_max) {
-				spawn_crystals(gd, head->position, 5 * pow(1.05, gd->wave-1));
+				spawn_crystals(gd, head->position, base_crystal_amount * pow(1.05, gd->wave-1));
 
 				gd->worms[i] = gd->worms[worms_size-1];
 				gs_dyn_array_pop(gd->worms);
@@ -728,7 +739,7 @@ void update_worms(game_data_t* gd, float delta)
 			float max_force = WORM_MAX_FORCE;
 			float max_speed = WORM_MAX_SPEED;
 			if (head->worm_type == WORM_TYPE_BOSS) {
-				max_velocity *= 200;
+				max_velocity = 300;
 				max_force = 8;
 				max_speed = 200;
 				gs_vec2 dir = gs_vec2_sub(gd->player.position, head->position);
@@ -924,6 +935,8 @@ void explode_tiles(game_data_t* gd, int tile_x, int tile_y, int radius)
 			
 			float force = 1 - (length / radius);
 			gd->tiles[x][y].destruction_value += 1 * force;
+			if (gd->tiles[x][y].destruction_value > 2)
+				gd->tiles[x][y].destruction_value = 2;
 		}
 	}
 }
@@ -1026,7 +1039,7 @@ void update_turrets(game_data_t* gd, float delta)
 		
 		if (t->dead) {
 			int crystal_amount = 7;
-			if (t->turret_type == TURRET_TYPE_BOSS) crystal_amount = 20;
+			if (t->turret_type == TURRET_TYPE_BOSS) crystal_amount = 40;
 			spawn_crystals(gd, t->position, crystal_amount * pow(1.05, gd->wave-1));
 			spawn_particle_emitter(gd, &(particle_emitter_desc_t){
 				.explode = true,
@@ -1070,6 +1083,8 @@ void update_turrets(game_data_t* gd, float delta)
 			if (t->turret_shoot_time >= t->turret_shoot_delay) {
 				t->turret_shot_count = 0;
 				t->turret_shooting = true;
+				if (t->turret_type == TURRET_TYPE_BOSS)
+					t->turret_shoot_time = -0.3; // wait 0.3 secounds before first shot
 			}
 
 			if (t->turret_type == TURRET_TYPE_BOSS) {
@@ -1137,9 +1152,9 @@ void update_turrets(game_data_t* gd, float delta)
 						break;
 					case (TURRET_TYPE_BOSS):
 						explode_tiles(gd, t->position.x/TILE_SIZE,t->position.y/TILE_SIZE, 8);
-						projectile_vel = gs_vec2_scale(target_dir, 300);
+						projectile_vel = gs_vec2_scale(target_dir, 500);
 						int p_radius_mul = 1;
-						int explode_radius = 0;
+						int explode_radius = (int)(stb_frand()*2);
 						if (t->turret_shot_count >= t->turret_burst_count) {
 							p_radius_mul = 2;
 							explode_radius = 8;
@@ -1149,7 +1164,7 @@ void update_turrets(game_data_t* gd, float delta)
 							.position = t->position,
 							.velocity = projectile_vel,
 							.radius = 4 * p_radius_mul,
-							.accell = 800,
+							.accell = 0,
 							.max_life_time = 0.75,
 							.dmg = t->dmg * p_radius_mul,
 							.go_through_walls = false,
@@ -1358,13 +1373,13 @@ void update_orbs(game_data_t* gd, float delta)
 		if (o->velocity.x < 0 && o->position.x < 0) {
 			o->velocity.x = -o->velocity.x;
 		}
-		if (o->velocity.x > 0 && o->position.x > RESOLUTION_X) {
+		if (o->velocity.x > 0 && o->position.x > WORLD_SIZE_X) {
 			o->velocity.x = -o->velocity.x;
 		}
 		if (o->velocity.y < 0 && o->position.y < 0) {
 			o->velocity.y = -o->velocity.y;
 		}
-		if (o->velocity.y > 0 && o->position.y > RESOLUTION_Y) {
+		if (o->velocity.y > 0 && o->position.y > WORLD_SIZE_Y) {
 			o->velocity.y = -o->velocity.y;
 		}
 
@@ -1539,6 +1554,30 @@ void update_crystals(game_data_t* gd, float delta)
 }
 
 
+gs_vec2 get_edge_spawnpoint(int margin)
+{
+	gs_vec2 spawn_pos;
+
+	if (stb_frand() > 0.5) {
+		if (stb_frand() > 0.5) {
+			spawn_pos.x = margin;
+			spawn_pos.y = (WORLD_SIZE_Y-margin*2) * stb_frand() + margin;
+		} else {
+			spawn_pos.x = WORLD_SIZE_X - margin;
+			spawn_pos.y = (WORLD_SIZE_Y-margin*2) * stb_frand() + margin;
+		}
+	} else {
+		if (stb_frand() > 0.5) {
+			spawn_pos.y = margin;
+			spawn_pos.x = (WORLD_SIZE_X-margin*2) * stb_frand() + margin;
+		} else {
+			spawn_pos.y = WORLD_SIZE_Y - margin;
+			spawn_pos.x = (WORLD_SIZE_X-margin*2) * stb_frand() + margin;
+		}
+	}
+	return spawn_pos;
+}
+
 void update_wave_system(game_data_t* gd, float delta)
  {
 	gd->spawn_timer -= delta;
@@ -1577,8 +1616,8 @@ void update_wave_system(game_data_t* gd, float delta)
 						spawn_worm(gd, worm_type, 4, spawn_pos, 6);
 						break;
 					case (ENTITY_TYPE_TURRET):
-						spawn_pos.x = (WORLD_SIZE_X-20) * stb_frand() + 20;
-						spawn_pos.y = (WORLD_SIZE_Y-20) * stb_frand() + 20;
+						spawn_pos.x = (WORLD_SIZE_X-100) * stb_frand() + 50;
+						spawn_pos.y = (WORLD_SIZE_Y-100) * stb_frand() + 50;
 						turret_type_t type = TURRET_TYPE_NORMAL;
 						if (stb_frand() >= 0.6) {
 							type = TURRET_TYPE_SPIN;
@@ -1587,32 +1626,17 @@ void update_wave_system(game_data_t* gd, float delta)
 						spawn_turret(gd, spawn_pos, type);
 						break;
 					case (ENTITY_TYPE_ORB):
-						if (stb_frand() > 0.5) {
-							if (stb_frand() > 0.5) {
-								spawn_pos.x = 20;
-								spawn_pos.y = (WORLD_SIZE_Y-40) * stb_frand() + 20;
-							} else {
-								spawn_pos.x = WORLD_SIZE_X - 20;
-								spawn_pos.y = (WORLD_SIZE_Y-40) * stb_frand() + 20;
-							}
-						} else {
-							if (stb_frand() > 0.5) {
-								spawn_pos.y = 20;
-								spawn_pos.x = (WORLD_SIZE_X-40) * stb_frand() + 20;
-							} else {
-								spawn_pos.y = WORLD_SIZE_Y - 20;
-								spawn_pos.x = (WORLD_SIZE_X-40) * stb_frand() + 20;
-							}
-						}
+						spawn_pos = get_edge_spawnpoint(20);
 						int orb_type = stb_rand() % ORB_TYPE_SIZE;
 						spawn_orb(gd, orb_type, spawn_pos);
 						break;
 					case (ENTITY_TYPE_BOSS):
-						spawn_pos.x = 50 + (WORLD_SIZE_X-100) * stb_frand();
-						spawn_pos.y = 50 + (WORLD_SIZE_Y-100) * stb_frand();
 						if (stb_frand() > 0.5) {
+							spawn_pos = get_edge_spawnpoint(0);
 							spawn_worm(gd, WORM_TYPE_BOSS, 15, spawn_pos, 16);
 						} else {
+							spawn_pos.x = 50 + (WORLD_SIZE_X-100) * stb_frand();
+							spawn_pos.y = 50 + (WORLD_SIZE_Y-100) * stb_frand();
 							spawn_turret(gd, spawn_pos, TURRET_TYPE_BOSS);
 						}
 						break;

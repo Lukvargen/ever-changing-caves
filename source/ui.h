@@ -24,41 +24,6 @@ typedef struct ui_control_t
 
 } ui_control_t;
 
-gs_vec2 ui_get_content_size(ui_control_t* control)
-{
-    gs_vec2 text_dims = {0};
-    if (control->text != NULL) {
-        text_dims = gs_asset_font_get_text_dimensions(&control->font, control->text);
-        float longest_width = 0.f;
-
-        char* text_copy = malloc(strlen(control->text)+1);
-        strcpy(text_copy, control->text);
-        char* token = strtok(text_copy, "\n");
-        int i = 0;
-        while (token != NULL) {
-            gs_vec2 dims = gs_asset_font_get_text_dimensions(&control->font, control->text);
-            if (dims.x > longest_width) {
-                longest_width = dims.x;
-            }
-            token = strtok(NULL, "\n");
-            i++;
-        
-       }
-        free(text_copy);
-        text_dims.y = control->font_height * i;
-
-    }
-    
-    gs_vec2 total_size;
-    total_size.x = gs_max(control->size.x, text_dims.x);
-    total_size.y = gs_max(control->size.y, text_dims.y);
-    total_size = gs_vec2_add(total_size, control->padding);
-    return total_size;
-}
-gs_vec2 ui_get_size(ui_control_t* control)
-{
-    return gs_vec2_add(ui_get_content_size(control), control->padding);
-}
 
 void ui_calculate_size(ui_control_t* control)
 {
@@ -114,9 +79,11 @@ ui_control_t* ui_panel(gs_immediate_draw_t* gsi, ui_control_t* control)
         return control;
     gsi_defaults(gsi);
     
-    gsi_rectv(gsi, control->pos, gs_vec2_add(control->pos, control->size), control->color, GS_GRAPHICS_PRIMITIVE_TRIANGLES);
     if (control->border)
-        gsi_rectv(gsi, control->pos, gs_vec2_add(control->pos, control->size), control->border_color, GS_GRAPHICS_PRIMITIVE_LINES);
+        gsi_rectv(gsi, gs_vec2_sub(control->pos, gs_v2(2,2)), gs_vec2_add(control->pos, gs_vec2_add(control->size, gs_v2(2,2))), control->border_color, GS_GRAPHICS_PRIMITIVE_TRIANGLES);
+    gsi_rectv(gsi, control->pos, gs_vec2_add(control->pos, control->size), control->color, GS_GRAPHICS_PRIMITIVE_TRIANGLES);
+
+
 
     
     
@@ -158,9 +125,9 @@ bool ui_button(gs_immediate_draw_t* gsi, gs_vec2 m_pos, ui_control_t* control)
         }
     
 
-    gsi_rectv(gsi, control->pos, gs_vec2_add(control->pos, control->size), color, GS_GRAPHICS_PRIMITIVE_TRIANGLES);
     if (control->border)
-        gsi_rectv(gsi, control->pos, gs_vec2_add(control->pos, control->size), control->border_color, GS_GRAPHICS_PRIMITIVE_LINES);
+        gsi_rectv(gsi, gs_vec2_sub(control->pos, gs_v2(2,2)), gs_vec2_add(control->pos, gs_vec2_add(control->size, gs_v2(2,2))), control->border_color, GS_GRAPHICS_PRIMITIVE_TRIANGLES);
+    gsi_rectv(gsi, control->pos, gs_vec2_add(control->pos, control->size), color, GS_GRAPHICS_PRIMITIVE_TRIANGLES);
      
 
     int i = 0;

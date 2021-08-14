@@ -156,7 +156,7 @@ void draw_game(game_data_t* gd)
 	gsi_text(gsi, RESOLUTION_X-80, 20, wave_str, &font_medium, false, 255, 255, 255, 255);
 	
 	gsi_defaults(gsi);
-	gs_vec2 m_pos = get_local_mouse_pos(gd);
+	gs_vec2 m_pos = get_local_mouse_pos();
 
 	if (gd->shop.visible) {
 		int center_x = RESOLUTION_X / 2;
@@ -195,7 +195,6 @@ void draw_game(game_data_t* gd)
 				.border = true,
 				.border_color = gs_color(200, 200, 200, 255),
 				.size = gs_v2(RESOLUTION_X/4, 0)
-				//.size = gs_v2(100, 100)
 			});
 			panel_pos.x += panel->size.x+10;
 			gs_vec2 button_pos;
@@ -251,6 +250,8 @@ void draw_game(game_data_t* gd)
 			}
 		}
 		int reroll_cost = 5 * pow(1.1, gd->wave-1);
+		if (gd->shop.free_reroll_left > 0)
+			reroll_cost = 0;
 		btn_color = gs_color(60, 20, 20, 255);
 		if (gd->crystals_currency >= reroll_cost) {
 			btn_color = gs_color(20, 60, 20, 255);
@@ -271,6 +272,8 @@ void draw_game(game_data_t* gd)
 		})) {
 			if (gd->crystals_currency >= reroll_cost) {
 				gd->crystals_currency -= reroll_cost;
+				if (gd->shop.free_reroll_left > 0)
+					gd->shop.free_reroll_left--;
 				gs_audio_play_source(gd->buy_positive_sound_hndl, gd->volume);
 				get_available_upgrades(gd);
 			} else {
@@ -458,6 +461,9 @@ void init_tiles(game_data_t* gd)
 }
 void draw_tiles(game_data_t* gd, gs_command_buffer_t* gcb)
 {
+	
+	// could split into chunks to only draw and update the ones on screen
+	
 	gs_mat4 model = gs_mat4_scale(TILE_SIZE, TILE_SIZE, 0.0f);
 	
 	gs_graphics_bind_uniform_desc_t uniforms[] = {
@@ -827,6 +833,24 @@ void draw_particles(game_data_t* gd, gs_command_buffer_t* gcb)
 void draw_entities(game_data_t* gd, gs_command_buffer_t* gcb)
 {
 
+	/*
+		Should probably have done some sprite component thing | Only woth to change if I decide to add more entities
+		sprite_t {
+			texture
+			pos
+			rot
+			scale
+		}
+		and use for entity_list in entities
+			for each entity in entity_list
+				-set up flash
+				color = entity.color
+				then can still use switch:
+
+				default:
+					draw sprite()
+	*/
+
 	gs_vec4 color;
 	float flash;
 	gs_mat4 mvp;
@@ -868,18 +892,9 @@ void draw_entities(game_data_t* gd, gs_command_buffer_t* gcb)
 		//color = gs_v4(50/255.0, 150/255.0, 50/255.0, 1.0);
 		flash = gd->player.flash;
 		float size = 14;
-		//gs_mat4 translation = gs_mat4_translate(gd->player.position.x, gd->player.position.y, 0.0f);
-		//gs_mat4 model = gs_mat4_mul(translation, gs_mat4_scale(size, size, 0));
-		//mvp = gs_mat4_mul(gd->projection, model);
 
-		//gs_graphics_apply_bindings(gcb, &binds);
-		//gs_graphics_draw(gcb, &(gs_graphics_draw_desc_t){.start = 0, .count = 6});
-
-		//size += 2;
 		color = gs_v4(1, 1, 1, 1);
 		gs_mat4 translation = gs_mat4_translate(gd->player.position.x, gd->player.position.y, 0.0f);
-		//gs_mat4 model = gs_mat4_mul(translation, gs_mat4_scale(size, size, 0));
-		//mvp = gs_mat4_mul(gd->projection, model);
 		gs_vec2 m_pos = get_world_mouse_pos(gd);
 		float angle = atan2f(m_pos.y - gd->player.position.y, m_pos.x - gd->player.position.x);
 		if (gs_platform_mouse_down(GS_MOUSE_LBUTTON)) {
@@ -1005,11 +1020,8 @@ void draw_entities(game_data_t* gd, gs_command_buffer_t* gcb)
 
 	
 	
-	// draw feet, base, barrel, top
 
 	// turrets
-	
-	
 	int t_size = gs_dyn_array_size(gd->turrets);
 	for (int i = 0; i < t_size; i++) {
 		entity_t* t = gd->turrets[i];

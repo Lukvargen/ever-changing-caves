@@ -28,4 +28,4 @@ libs=(
 emcc ${inc[*]} ${src[*]} ${flags[*]} -o $proj_name.html
 
 cd ..
-#$SHELL
+$SHELL

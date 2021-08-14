@@ -52,6 +52,7 @@ void get_available_upgrades(game_data_t* gd)
 void shop_show(game_data_t* gd)
 {
     gd->paused = true;
+	gd->shop.free_reroll_left = gd->shop.free_reroll_count;
     get_available_upgrades(gd);
     gd->shop.visible = true;
 }
@@ -62,15 +63,47 @@ void shop_hide(game_data_t* gd)
     next_wave(gd);
 }
 
+
+
 char* get_upgrade_string(game_data_t* gd, upgrade_t* upgrade, char* text, int TEXT_SIZE)
 {
+	char buffer[128];
     switch(upgrade->type) {
         case (UPGRADE_TYPE_DMG):
-            gs_snprintf(text, TEXT_SIZE, "DMG+%i\n(%i->%i)", upgrade->ivalue, gd->player.dmg, gd->player.dmg + upgrade->ivalue);
+		{
+			int new_base_dmg = gd->player.player_base_dmg + (int)upgrade->ivalue;
+            gs_snprintf(text, TEXT_SIZE, "BASE DMG+%i\n(%i->%i)", upgrade->ivalue, gd->player.player_base_dmg, new_base_dmg);
+			gs_snprintf(buffer, TEXT_SIZE, "\nDMG (%i->%i)", gd->player.dmg, (int)(new_base_dmg * gd->player.player_dmg_multiplier));
+			strcat(text, buffer);
             break;
+		}
+		case (UPGRADE_TYPE_DMG_MULTIPLIER):
+		{
+			float new_dmg_multiplier = gd->player.player_dmg_multiplier + upgrade->fvalue;
+            gs_snprintf(text, TEXT_SIZE, "DMG MULTIPLIER+%.2f\n(%.2f->%.2f)", upgrade->fvalue, gd->player.player_dmg_multiplier, new_dmg_multiplier);
+			
+			gs_snprintf(buffer, TEXT_SIZE, "\nDMG (%i->%i)", gd->player.dmg, (int)(gd->player.player_base_dmg * new_dmg_multiplier));
+			strcat(text, buffer);
+            break;
+		}
         case (UPGRADE_TYPE_HP):
-            gs_snprintf(text, TEXT_SIZE, "HP+%i\n(%i->%i)", upgrade->ivalue, gd->player.max_hp, gd->player.max_hp + upgrade->ivalue);
+		{
+			int new_base_hp = gd->player.player_base_hp + upgrade->ivalue;
+			gs_snprintf(text, TEXT_SIZE, "BASE HP+%i\n(%i->%i)", upgrade->ivalue, gd->player.player_base_hp, new_base_hp);
+			
+			gs_snprintf(buffer, TEXT_SIZE, "\nHP (%i->%i)", gd->player.max_hp, (int)(new_base_hp * gd->player.player_hp_multiplier));
+			strcat(text, buffer);
+			break;
+		}
+		case (UPGRADE_TYPE_HP_MULTIPLIER):
+		{
+			float new_hp_multiplier = gd->player.player_hp_multiplier + upgrade->fvalue;
+            gs_snprintf(text, TEXT_SIZE, "HP MULTIPLIER+%.2f\n(%.2f->%.2f)", upgrade->fvalue, gd->player.player_hp_multiplier, new_hp_multiplier);
+			
+			gs_snprintf(buffer, TEXT_SIZE, "\nHP (%i->%i)", gd->player.max_hp, (int)(gd->player.player_base_hp * new_hp_multiplier));
+			strcat(text, buffer);
             break;
+		}
         case (UPGRADE_TYPE_LIFETIME):
             gs_snprintf(text, TEXT_SIZE, "PROJECTILE LIFETIME+%.1f\n(%.1f->%.1f)", upgrade->fvalue, gd->player.player_projectile_lifetime, gd->player.player_projectile_lifetime + upgrade->fvalue);
             break;
@@ -95,6 +128,9 @@ char* get_upgrade_string(game_data_t* gd, upgrade_t* upgrade, char* text, int TE
         case (UPGRADE_TYPE_LASER):
             gs_snprintf(text, TEXT_SIZE, "LASER TARGETS+%i \n(%i->%i)", upgrade->ivalue, gd->player.player_laser_lvl, gd->player.player_laser_lvl + upgrade->ivalue);
             break;
+		case (UPGRADE_TYPE_FREE_REROLL):
+            gs_snprintf(text, TEXT_SIZE, "FREE REROLL+%i \n(%i->%i)", upgrade->ivalue, gd->shop.free_reroll_count, gd->shop.free_reroll_count + upgrade->ivalue);
+            break;
         default:
             gs_snprintf(text, TEXT_SIZE, "ERROR");
             gs_println("NO UPGRADE TYPE");
@@ -115,11 +151,23 @@ void upgrade_purchase(game_data_t* gd, upgrade_t* upgrade)
 
     switch(upgrade->type) {
         case (UPGRADE_TYPE_DMG):
-            gd->player.dmg += upgrade->ivalue;
+            gd->player.player_base_dmg += upgrade->ivalue;
+			gd->player.dmg = gd->player.player_base_dmg * gd->player.player_dmg_multiplier;
+            break;
+		case (UPGRADE_TYPE_DMG_MULTIPLIER):
+            gd->player.player_dmg_multiplier += upgrade->fvalue;
+			gd->player.dmg = gd->player.player_base_dmg * gd->player.player_dmg_multiplier;
             break;
         case (UPGRADE_TYPE_HP):
-            gd->player.max_hp += upgrade->ivalue;
-            gd->player.hp += upgrade->ivalue;
+            gd->player.player_base_hp += upgrade->ivalue;
+			gd->player.hp += upgrade->ivalue;
+            gd->player.max_hp = gd->player.player_base_hp * gd->player.player_hp_multiplier;
+            break;
+		case (UPGRADE_TYPE_HP_MULTIPLIER):
+            gd->player.player_hp_multiplier += upgrade->fvalue;
+			int new_max_hp = gd->player.player_base_hp * gd->player.player_hp_multiplier;
+			gd->player.hp += new_max_hp - gd->player.max_hp;
+            gd->player.max_hp = new_max_hp;
             break;
         case (UPGRADE_TYPE_LIFETIME):
             gd->player.player_projectile_lifetime += upgrade->fvalue;
@@ -145,6 +193,10 @@ void upgrade_purchase(game_data_t* gd, upgrade_t* upgrade)
         case (UPGRADE_TYPE_LASER):
             gd->player.player_laser_lvl += upgrade->ivalue;
             break;
+		case (UPGRADE_TYPE_FREE_REROLL):
+            gd->shop.free_reroll_count += upgrade->ivalue;
+			gd->shop.free_reroll_left += upgrade->ivalue;
+            break;
         default:
             break;
     }
@@ -153,16 +205,17 @@ void upgrade_purchase(game_data_t* gd, upgrade_t* upgrade)
 
 void unlock_upgrades(game_data_t* gd)
 {
+
     switch (gd->wave) {
 		case (1):
 			append_all_upgrades(gd, (upgrade_t){
 			.type = UPGRADE_TYPE_DMG,
-			.cost = 20,
+			.cost = 10,
 			.ivalue = 1
 			}, 5);
 			append_all_upgrades(gd, (upgrade_t){
 			.type = UPGRADE_TYPE_HP,
-			.cost = 20,
+			.cost = 10,
 			.ivalue = 2
 			}, 5);
 			append_all_upgrades(gd, (upgrade_t){
@@ -210,6 +263,11 @@ void unlock_upgrades(game_data_t* gd)
 				.cost = 30,
 				.ivalue = 1
 			}, 1);
+			append_all_upgrades(gd, (upgrade_t){
+				.type = UPGRADE_TYPE_FREE_REROLL,
+				.cost = 10,
+				.ivalue = 1
+			}, 1);
 			break;
 		case(3):
 			append_all_upgrades(gd, (upgrade_t){
@@ -218,10 +276,20 @@ void unlock_upgrades(game_data_t* gd)
 				.ivalue = 1
 				}, 5);
 			append_all_upgrades(gd, (upgrade_t){
+			.type = UPGRADE_TYPE_DMG_MULTIPLIER,
+			.cost = 20,
+			.fvalue = 0.25
+			}, 4);
+			append_all_upgrades(gd, (upgrade_t){
 				.type = UPGRADE_TYPE_HP,
 				.cost = 20,
 				.ivalue = 3
 				}, 5);
+			append_all_upgrades(gd, (upgrade_t){
+			.type = UPGRADE_TYPE_HP_MULTIPLIER,
+			.cost = 20,
+			.fvalue = 0.25
+			}, 4);
 			append_all_upgrades(gd, (upgrade_t){
 				.type = UPGRADE_TYPE_SHOOT_REFLECT_AMOUNT,
 				.cost = 30,
@@ -232,13 +300,23 @@ void unlock_upgrades(game_data_t* gd)
 			append_all_upgrades(gd, (upgrade_t){
 			.type = UPGRADE_TYPE_DMG,
 			.cost = 25,
-			.ivalue = 2
+			.ivalue = 1
 			}, 5);
+			append_all_upgrades(gd, (upgrade_t){
+			.type = UPGRADE_TYPE_DMG_MULTIPLIER,
+			.cost = 30,
+			.fvalue = 0.25
+			}, 4);
 			append_all_upgrades(gd, (upgrade_t){
 			.type = UPGRADE_TYPE_HP,
 			.cost = 25,
 			.ivalue = 5
 			}, 5);
+			append_all_upgrades(gd, (upgrade_t){
+			.type = UPGRADE_TYPE_HP_MULTIPLIER,
+			.cost = 30,
+			.fvalue = 0.25
+			}, 4);
 			append_all_upgrades(gd, (upgrade_t){
 				.type = UPGRADE_TYPE_LIFETIME,
 				.cost = 15,
@@ -279,12 +357,13 @@ void unlock_upgrades(game_data_t* gd)
 		case (10):
 			append_all_upgrades(gd, (upgrade_t){
 			.type = UPGRADE_TYPE_DMG,
-			.cost = 30,
+			.cost = 50,
 			.ivalue = 2
 			}, 5);
+			
 			append_all_upgrades(gd, (upgrade_t){
 			.type = UPGRADE_TYPE_HP,
-			.cost = 40,
+			.cost = 50,
 			.ivalue = 5
 			}, 10);
 			break;

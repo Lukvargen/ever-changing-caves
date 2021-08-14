@@ -196,6 +196,10 @@ typedef struct entity_t
 			float player_projectile_reflect_chance;
 			int player_projectile_reflect_amount;
 			int player_laser_lvl;
+			int player_base_dmg;
+			float player_dmg_multiplier;
+			int player_base_hp;
+			float player_hp_multiplier;
 			
 			particle_emitter_t* player_particle_emitter;
 			
@@ -364,4 +368,4 @@ void next_wave(game_data_t* gd);
 void restart_game(game_data_t* gd);
 
 
-#endif
+#endif o

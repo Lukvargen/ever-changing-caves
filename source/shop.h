@@ -8,7 +8,9 @@
 typedef enum upgrade_type_t
 {
 	UPGRADE_TYPE_DMG,
+	UPGRADE_TYPE_DMG_MULTIPLIER,
 	UPGRADE_TYPE_HP,
+	UPGRADE_TYPE_HP_MULTIPLIER,
 	UPGRADE_TYPE_LIFETIME,
 	UPGRADE_TYPE_SPEED,
 	UPGRADE_TYPE_ACCELL,
@@ -17,6 +19,7 @@ typedef enum upgrade_type_t
 	UPGRADE_TYPE_SHOOT_REFLECT,
 	UPGRADE_TYPE_SHOOT_REFLECT_AMOUNT,
 	UPGRADE_TYPE_LASER,
+	UPGRADE_TYPE_FREE_REROLL,
 	UPGRADE_TYPE_SIZE,
     UPGRADE_TYPE_NULL
 } upgrade_type_t;
@@ -38,6 +41,8 @@ typedef struct shop_t
 {
 	upgrade_t upgrades_available[SHOP_UPGRADES_SIZE];
 	gs_dyn_array(upgrade_t) all_upgrades;
+	int free_reroll_count;
+	int free_reroll_left;
 	bool visible;
 
 } shop_t;
