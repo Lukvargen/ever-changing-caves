@@ -30,6 +30,8 @@
 #define PROJECITLE_MAX_LIFE_TIME 3.f
 #define EXPLODE_DMG 5.f
 
+#define FIRE_TICK_TIME 0.25f
+
 #define TILES_SIZE_X	120//80 // RESOLUTION_X / TILE_SIZE
 #define TILES_SIZE_Y	68//45 // RESOLUTION_Y / TILE_SIZE
 #define TILE_SIZE		8
@@ -168,10 +170,17 @@ typedef enum worm_type_t
 	WORM_TYPE_BOSS
 } worm_type_t;
 
+typedef struct fire_debuff_t
+{
+	float tick_timer;
+	int ticks_left;
+	float dmg;
+} fire_debuff_t;
+
 typedef struct entity_t
 {
 	entity_type_t type;
-	int hp;
+	float hp;
 	int max_hp;
 	int dmg;
 	float radius;
@@ -182,6 +191,8 @@ typedef struct entity_t
 	gs_vec2 position;
 	gs_vec2 velocity;
 	gs_vec4 color;
+
+	fire_debuff_t fire_debuff;
 
 	union
 	{
@@ -200,6 +211,8 @@ typedef struct entity_t
 			float player_dmg_multiplier;
 			int player_base_hp;
 			float player_hp_multiplier;
+
+			int player_fire_lvl;
 			
 			particle_emitter_t* player_particle_emitter;
 			

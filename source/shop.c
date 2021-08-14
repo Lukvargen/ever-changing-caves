@@ -131,6 +131,9 @@ char* get_upgrade_string(game_data_t* gd, upgrade_t* upgrade, char* text, int TE
 		case (UPGRADE_TYPE_FREE_REROLL):
             gs_snprintf(text, TEXT_SIZE, "FREE REROLL+%i \n(%i->%i)", upgrade->ivalue, gd->shop.free_reroll_count, gd->shop.free_reroll_count + upgrade->ivalue);
             break;
+		case (UPGRADE_TYPE_FIRE_DEBUFF):
+            gs_snprintf(text, TEXT_SIZE, "FIRE DEBUFF+%i \n(%i->%is)", upgrade->ivalue, gd->player.player_fire_lvl, gd->player.player_fire_lvl + upgrade->ivalue);
+            break;
         default:
             gs_snprintf(text, TEXT_SIZE, "ERROR");
             gs_println("NO UPGRADE TYPE");
@@ -196,6 +199,9 @@ void upgrade_purchase(game_data_t* gd, upgrade_t* upgrade)
 		case (UPGRADE_TYPE_FREE_REROLL):
             gd->shop.free_reroll_count += upgrade->ivalue;
 			gd->shop.free_reroll_left += upgrade->ivalue;
+            break;
+		case (UPGRADE_TYPE_FIRE_DEBUFF):
+            gd->player.player_fire_lvl += upgrade->ivalue;
             break;
         default:
             break;
@@ -266,6 +272,11 @@ void unlock_upgrades(game_data_t* gd)
 			append_all_upgrades(gd, (upgrade_t){
 				.type = UPGRADE_TYPE_FREE_REROLL,
 				.cost = 10,
+				.ivalue = 1
+			}, 1);
+			append_all_upgrades(gd, (upgrade_t){
+				.type = UPGRADE_TYPE_FIRE_DEBUFF,
+				.cost = 25,
 				.ivalue = 1
 			}, 1);
 			break;
@@ -349,6 +360,11 @@ void unlock_upgrades(game_data_t* gd)
 			}, 2);
 			append_all_upgrades(gd, (upgrade_t){
 				.type = UPGRADE_TYPE_LASER,
+				.cost = 50,
+				.ivalue = 1
+			}, 2);
+			append_all_upgrades(gd, (upgrade_t){
+				.type = UPGRADE_TYPE_FIRE_DEBUFF,
 				.cost = 50,
 				.ivalue = 1
 			}, 2);

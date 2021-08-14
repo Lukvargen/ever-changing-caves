@@ -486,8 +486,8 @@ void draw_tiles(game_data_t* gd, gs_command_buffer_t* gcb)
 	gs_vec3 wall_color = {43/255.0, 22/255.0, 60/255.0};
 	gs_vec3 floor_color = {216/255.0, 180/255.0, 226/255.0};
 	gs_vec3 col;
-	for (int x = 0; x < TILES_SIZE_X; x++) {
-		for (int y = 0; y < TILES_SIZE_Y; y++) {
+	for (int y = 0; y < TILES_SIZE_Y; y++) {
+		for (int x = 0; x < TILES_SIZE_X; x++) {
 			int x_pos = x * TILE_SIZE;
 			int y_pos = y * TILE_SIZE;
 			float tile_value = gd->tiles[x][y].value;
