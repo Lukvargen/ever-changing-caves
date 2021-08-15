@@ -52,6 +52,7 @@ gs_vec2 steer(gs_vec2 from_pos, gs_vec2 target_pos, gs_vec2 velocity, float max_
 void remove_entity(entity_t* arr[], int* arr_length, int* i);
 void entity_take_dmg(game_data_t* gd, entity_t* entity, float dmg, gs_vec2 hit_pos, gs_vec2 knock_dir);
 
+void play_sfx(game_data_t* gd, gs_handle(gs_audio_source_t) audio, float volume);
 
 void update_wave_system(game_data_t* gd, float delta);
 void next_wave(game_data_t* gd);
@@ -100,6 +101,7 @@ void init()
 	graphics_init(gd);
 	spawn_player(gd);
 	restart_game(gd);
+	//gd->player.player_spawn_missile_chance = 1;
 	//gd->crystals_currency = 1000;
 	shop_init_all_upgrades(gd);
 	//shop_show(gd);
@@ -146,6 +148,7 @@ void update()
 
 	if (!gd->paused) {
 		gd->time += delta;
+		gd->sfx_played_count = 0;
 		update_wave_system(gd, delta);
 		update_tiles(gd, delta);
 		update_powerups(gd, delta);
@@ -216,6 +219,8 @@ void restart_game(game_data_t* gd)
 	//gd->player.player_laser_lvl = 2;
 	//gd->player.dmg = 3;
 
+	//gd->crystals_currency = 10000;
+
 
 	next_wave(gd);
 	//spawn_worm(gd, WORM_TYPE_BOSS, 15, gs_v2(RESOLUTION_X/2 + 128, RESOLUTION_Y/2), 16);
@@ -263,7 +268,9 @@ void spawn_player(game_data_t* gd)
 	p->player_projectile_reflect_amount = 1;
 	p->player_laser_lvl = 0;
 
+	//p->player_dual_shot = true;
 	
+
 
 
 	p->player_particle_emitter = spawn_particle_emitter(gd, &(particle_emitter_desc_t){
@@ -364,8 +371,21 @@ void update_player(game_data_t* gd, float delta)
 		gs_vec2 vel = gs_vec2_scale(dir, p->player_projectile_speed);
 
 		
+		gs_vec4 projectile_particle_color = gs_v4(0.1, 0.3, 0.3, 1.0);
+		if (p->player_fire_lvl > 0)
+			projectile_particle_color = gs_v4(0.8, 0.3, 0.3, 1.0);
 		
-		spawn_projectile(gd, &(projectile_t){
+		particle_emitter_desc_t particle_desc = {
+			.particle_amount = 8,
+			.particle_color = projectile_particle_color,
+			.particle_lifetime = 0.25,
+			.particle_shink_out = true,
+			.particle_size = gs_v2(8, 8),
+			.position = *pos
+			
+		};
+
+		projectile_t projectile = {
 			.position = *pos,
 			.velocity = vel,
 			.radius = 5,
@@ -373,16 +393,19 @@ void update_player(game_data_t* gd, float delta)
 			.max_life_time = p->player_projectile_lifetime,
 			.dmg = p->dmg,
 			.explode_radius = p->player_explosion_radius,
-			.particle_emitter = spawn_particle_emitter(gd, &(particle_emitter_desc_t){
-				.particle_amount = 8,
-				.particle_color = gs_v4(0.1, 0.3, 0.3, 1.0),
-				.particle_lifetime = 0.25,
-				.particle_shink_out = true,
-				.particle_size = gs_v2(8, 8),
-				.position = *pos
-				
-			})
-		});
+			.particle_emitter = spawn_particle_emitter(gd, &particle_desc)
+		};
+		if (p->player_dual_shot) {
+			float angle = atan2f(vel.y, vel.x);
+			float p_speed = p->player_projectile_speed;
+			projectile.velocity = gs_v2(cos(angle-0.15) * p_speed, sin(angle-0.15) * p_speed);
+			spawn_projectile(gd, &projectile);
+			projectile.particle_emitter = spawn_particle_emitter(gd, &particle_desc);
+			projectile.velocity = gs_v2(cos(angle+0.15) * p_speed, sin(angle+0.15) * p_speed);
+			spawn_projectile(gd, &projectile);
+		} else {
+			spawn_projectile(gd, &projectile);
+		}
 		
 	}
 
@@ -517,7 +540,7 @@ void update_projectiles(game_data_t* gd, float delta)
 				explode_tiles(gd, tile_x, tile_y, p->explode_radius);
 				if (!p->enemy_created) {
 					gd->shake_time = 0.05;
-					gs_audio_play_source(gd->hit_wall_sound_hndl, gd->volume * 0.6);
+					play_sfx(gd, gd->hit_wall_sound_hndl, gd->volume * 0.6);
 				}
 			}
 		}
@@ -535,8 +558,11 @@ void update_projectiles(game_data_t* gd, float delta)
 				explode_tiles(gd, tile_x, tile_y, 5);
 				gs_vec2 projectile_dir = gs_vec2_norm(p->velocity);
 				entity_take_dmg(gd, player, p->dmg, *pos, projectile_dir);
+
 			}
 		} else {
+			gs_vec2 closest_enemy_position = {0};
+			float closest_dist = 1000000;
 			for (int enemy_list_i = 0; enemy_list_i < gs_dyn_array_size(gd->enemies); enemy_list_i++) {
 				entity_t** enemy_list = *gd->enemies[enemy_list_i];
 				if (should_delete)
@@ -546,6 +572,10 @@ void update_projectiles(game_data_t* gd, float delta)
 					entity_t* enemy = enemy_list[j];
 					if (enemy->dead || p->entity_ignore == enemy)
 						continue;
+					float dist = gs_vec2_dist(enemy->position, p->position);
+					if (dist < p->seek_radius && dist <= closest_dist) {
+						closest_enemy_position = enemy->position;
+					}
 					if (is_colliding(*pos, enemy->position, p->radius, enemy->radius)) {
 						if (p->entity_ignore != 0) {
 						}
@@ -587,9 +617,40 @@ void update_projectiles(game_data_t* gd, float delta)
 							}
 							
 						}
+
+						if (stb_frand() <= gd->player.player_spawn_missile_chance) {
+							p_size++;
+							spawn_projectile(gd, &(projectile_t){
+								.color = gs_v4(0.2, 0.4, 0.3, 1.0),
+								.dmg = p->dmg,
+								.entity_ignore = enemy,
+								.go_through_walls = true,
+								.max_life_time = 2,
+								.position = p->position,
+								.radius = p->radius,
+								.seek_max_force = 4.f,
+								.seek_max_speed = 200.f,
+								.seek_max_velocity = 200.f,
+								.seek_radius = 400.f,
+								.velocity = gs_v2(cos(stb_frand()*3.14*2) * 200, sin(stb_frand()*3.14*2) * 200),
+								.particle_emitter = spawn_particle_emitter(gd, &(particle_emitter_desc_t){
+									.particle_amount = p->particle_emitter->particle_amount,
+									.particle_color = gs_v4(0.2, 0.7, 0.3, 1.0),
+									.particle_lifetime = p->particle_emitter->particle_life_time,
+									.particle_shink_out = p->particle_emitter->particle_shrink_out,
+									.particle_size = p->particle_emitter->particle_size,
+									.position = p->position,
+									
+								})
+							});
+						}
+
 						break;
 					}
 				}
+			}
+			if (closest_enemy_position.x != 0 && closest_enemy_position.y != 0) {
+				p->velocity = steer(p->position, closest_enemy_position, p->velocity, p->seek_max_velocity, p->seek_max_force, p->seek_max_speed);
 			}
 		} // end spawned by player
 
@@ -1237,9 +1298,6 @@ void update_turrets(game_data_t* gd, float delta)
 						break;
 
 				}
-				
-
-				
 				if (t->turret_shot_count >= t->turret_burst_count) {
 					t->turret_shot_count = 0;
 					t->turret_shooting = false;
@@ -1531,7 +1589,7 @@ void entity_take_dmg(game_data_t* gd, entity_t* entity, float dmg, gs_vec2 hit_p
 	
 
 	if (knock_dir.x != 0 && knock_dir.y != 0) {
-		gs_audio_play_source(gd->hit_sound_hndl, gd->volume);
+		play_sfx(gd, gd->hit_sound_hndl, gd->volume);
 
 		if (entity->type != ENTITY_TYPE_TURRET)
 			entity->velocity = gs_vec2_add(entity->velocity, gs_vec2_scale(knock_dir, 200));
@@ -1596,7 +1654,7 @@ void update_crystals(game_data_t* gd, float delta)
 			i--;
 			crystals_size--;
 			gs_dyn_array_pop(gd->crystals);
-			gs_audio_play_source(gd->crystal_pickup_sound_hndl, gd->volume * 0.6);
+			play_sfx(gd, gd->crystal_pickup_sound_hndl, gd->volume * 0.6);
 			gd->crystals_currency++;
 			continue;
 		}
@@ -1689,6 +1747,7 @@ void update_wave_system(game_data_t* gd, float delta)
 						spawn_orb(gd, orb_type, spawn_pos);
 						break;
 					case (ENTITY_TYPE_BOSS):
+					{
 						if (stb_frand() > 0.5) {
 							spawn_pos = get_edge_spawnpoint(0);
 							spawn_worm(gd, WORM_TYPE_BOSS, 15, spawn_pos, 16);
@@ -1697,7 +1756,9 @@ void update_wave_system(game_data_t* gd, float delta)
 							spawn_pos.y = 50 + (WORLD_SIZE_Y-100) * stb_frand();
 							spawn_turret(gd, spawn_pos, TURRET_TYPE_BOSS);
 						}
-						break;
+						continue; // only spawn 1 boss per spawn instance
+						//break;
+					}
 				}
 			}
 		} else {
@@ -1808,6 +1869,14 @@ gs_vec2 steer(gs_vec2 from_pos, gs_vec2 target_pos, gs_vec2 velocity, float max_
 	return gs_vec2_truncate(velocity, max_speed);
 }
 
+
+void play_sfx(game_data_t* gd, gs_handle(gs_audio_source_t) audio, float volume)
+{
+	if (gd->sfx_played_count < 3) {
+		gd->sfx_played_count++;
+		gs_audio_play_source(audio, volume);
+	}
+}
 
 
 

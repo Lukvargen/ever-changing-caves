@@ -16,7 +16,9 @@
 #define PLAYER_BASE_PROJECTILE_ACCELL 100.f
 #define PLAYER_BASE_EXPLOSION_RADIUS 2
 #define PLAYER_BASE_SHOOT_DELAY 0.3f
+#define PLAYER_SHOOT_DELAY_UPGRADE_EFFECT 0.8f
 #define PLAYER_BASE_DMG 1
+#define PLAYER_DUAL_SHOT_SHOOT_DELAY_EFFECT 0.33f
 
 #define WORM_MAX_VELOCITY	200.f
 #define WORM_MAX_FORCE		6.f
@@ -204,6 +206,7 @@ typedef struct entity_t
 			float player_projectile_accel;
 			int player_explosion_radius;
 			float player_shoot_delay;
+			int player_shoot_delay_upgrades;
 			float player_projectile_reflect_chance;
 			int player_projectile_reflect_amount;
 			int player_laser_lvl;
@@ -211,8 +214,10 @@ typedef struct entity_t
 			float player_dmg_multiplier;
 			int player_base_hp;
 			float player_hp_multiplier;
+			float player_spawn_missile_chance;
 
 			int player_fire_lvl;
+			bool player_dual_shot;
 			
 			particle_emitter_t* player_particle_emitter;
 			
@@ -275,6 +280,12 @@ typedef struct projectile_t
 	float max_life_time;
 	int dmg;
 	int explode_radius;
+
+	float seek_radius;
+	float seek_max_velocity;
+	float seek_max_force;
+	float seek_max_speed;
+
 	entity_t* entity_ignore;
 	particle_emitter_t* particle_emitter;
 	bool enemy_created;
@@ -371,6 +382,7 @@ typedef struct game_data_t
 	bool restart;
 	bool mute;
 	float volume;
+	int sfx_played_count;
 
 } game_data_t;
 

@@ -64,6 +64,10 @@ void shop_hide(game_data_t* gd)
 }
 
 
+float calculate_shoot_delay(int player_shoot_delay_upgrades, int dualshot)
+{
+	return PLAYER_BASE_SHOOT_DELAY * pow(PLAYER_SHOOT_DELAY_UPGRADE_EFFECT, player_shoot_delay_upgrades) * pow((1+PLAYER_DUAL_SHOT_SHOOT_DELAY_EFFECT), dualshot);
+}
 
 char* get_upgrade_string(game_data_t* gd, upgrade_t* upgrade, char* text, int TEXT_SIZE)
 {
@@ -117,7 +121,7 @@ char* get_upgrade_string(game_data_t* gd, upgrade_t* upgrade, char* text, int TE
             gs_snprintf(text, TEXT_SIZE, "PROJECTILE EXPLODE+%i\n(%i->%i)", upgrade->ivalue, gd->player.player_explosion_radius, gd->player.player_explosion_radius + upgrade->ivalue);
             break;
         case (UPGRADE_TYPE_SHOOT_DELAY):
-            gs_snprintf(text, TEXT_SIZE, "SHOOT DELAY-%.2f\n(%.2f->%.2f)", upgrade->fvalue, gd->player.player_shoot_delay, gd->player.player_shoot_delay - upgrade->fvalue);
+            gs_snprintf(text, TEXT_SIZE, "SHOOT DELAY-%i%%\n(%.2f->%.2f)", (int)(upgrade->ivalue*(1-PLAYER_SHOOT_DELAY_UPGRADE_EFFECT)*100), gd->player.player_shoot_delay, calculate_shoot_delay(gd->player.player_shoot_delay_upgrades+upgrade->ivalue, (int)gd->player.player_dual_shot));
             break;
         case (UPGRADE_TYPE_SHOOT_REFLECT):
             gs_snprintf(text, TEXT_SIZE, "SHOT SPLIT CHANCE+%.0f %%\n(%.0f%%->%.0f%%)", upgrade->fvalue*100, gd->player.player_projectile_reflect_chance*100, 100*(gd->player.player_projectile_reflect_chance + upgrade->fvalue));
@@ -133,6 +137,12 @@ char* get_upgrade_string(game_data_t* gd, upgrade_t* upgrade, char* text, int TE
             break;
 		case (UPGRADE_TYPE_FIRE_DEBUFF):
             gs_snprintf(text, TEXT_SIZE, "FIRE DEBUFF+%i \n(%i->%is)", upgrade->ivalue, gd->player.player_fire_lvl, gd->player.player_fire_lvl + upgrade->ivalue);
+            break;
+		case (UPGRADE_TYPE_DUALSHOT):
+            gs_snprintf(text, TEXT_SIZE, "DUALSHOT\nSHOOT DELAY+%.0f%% (%.2f->%.2fs)", (PLAYER_DUAL_SHOT_SHOOT_DELAY_EFFECT*100), gd->player.player_shoot_delay, calculate_shoot_delay(gd->player.player_shoot_delay_upgrades, 1));
+            break;
+		case (UPGRADE_TYPE_MISSILE):
+            gs_snprintf(text, TEXT_SIZE, "MISSILE CHANCE+%.0f\n(%.0f%%->%.0f%%)", upgrade->fvalue * 100, gd->player.player_spawn_missile_chance * 100, (gd->player.player_spawn_missile_chance+upgrade->fvalue)*100);
             break;
         default:
             gs_snprintf(text, TEXT_SIZE, "ERROR");
@@ -185,7 +195,9 @@ void upgrade_purchase(game_data_t* gd, upgrade_t* upgrade)
             gd->player.player_explosion_radius += upgrade->ivalue;
             break;
         case (UPGRADE_TYPE_SHOOT_DELAY):
-            gd->player.player_shoot_delay -= upgrade->fvalue;
+			gd->player.player_shoot_delay_upgrades++;
+			gd->player.player_shoot_delay = calculate_shoot_delay(gd->player.player_shoot_delay_upgrades, (int)gd->player.player_dual_shot);
+            //gd->player.player_shoot_delay -= upgrade->fvalue;
             break;
         case (UPGRADE_TYPE_SHOOT_REFLECT):
             gd->player.player_projectile_reflect_chance += upgrade->fvalue;
@@ -202,6 +214,13 @@ void upgrade_purchase(game_data_t* gd, upgrade_t* upgrade)
             break;
 		case (UPGRADE_TYPE_FIRE_DEBUFF):
             gd->player.player_fire_lvl += upgrade->ivalue;
+            break;
+		case (UPGRADE_TYPE_DUALSHOT):
+            gd->player.player_dual_shot = true;
+			gd->player.player_shoot_delay = calculate_shoot_delay(gd->player.player_shoot_delay_upgrades, (int)gd->player.player_dual_shot);
+            break;
+		case (UPGRADE_TYPE_MISSILE):
+            gd->player.player_spawn_missile_chance += upgrade->fvalue;
             break;
         default:
             break;
@@ -247,7 +266,7 @@ void unlock_upgrades(game_data_t* gd)
 			append_all_upgrades(gd, (upgrade_t){
 				.type = UPGRADE_TYPE_SHOOT_DELAY,
 				.cost = 20,
-				.fvalue = 0.05
+				.ivalue = 1
 			}, 3);
 			append_all_upgrades(gd, (upgrade_t){
 				.type = UPGRADE_TYPE_SHOOT_REFLECT,
@@ -285,7 +304,7 @@ void unlock_upgrades(game_data_t* gd)
 				.type = UPGRADE_TYPE_DMG,
 				.cost = 20,
 				.ivalue = 1
-				}, 5);
+			}, 5);
 			append_all_upgrades(gd, (upgrade_t){
 			.type = UPGRADE_TYPE_DMG_MULTIPLIER,
 			.cost = 20,
@@ -305,6 +324,11 @@ void unlock_upgrades(game_data_t* gd)
 				.type = UPGRADE_TYPE_SHOOT_REFLECT_AMOUNT,
 				.cost = 30,
 				.ivalue = 1
+			}, 2);
+			append_all_upgrades(gd, (upgrade_t){
+				.type = UPGRADE_TYPE_MISSILE,
+				.cost = 30,
+				.fvalue = 0.2
 			}, 2);
 			break;
 		case(5):
@@ -351,8 +375,8 @@ void unlock_upgrades(game_data_t* gd)
 			append_all_upgrades(gd, (upgrade_t){
 				.type = UPGRADE_TYPE_SHOOT_DELAY,
 				.cost = 30,
-				.fvalue = 0.05
-			}, 2);
+				.ivalue = 1
+			}, 5);
 			append_all_upgrades(gd, (upgrade_t){
 			.type = UPGRADE_TYPE_SHOOT_REFLECT,
 			.cost = 50,
@@ -368,20 +392,35 @@ void unlock_upgrades(game_data_t* gd)
 				.cost = 50,
 				.ivalue = 1
 			}, 2);
+			append_all_upgrades(gd, (upgrade_t){
+				.type = UPGRADE_TYPE_DUALSHOT,
+				.cost = 50,
+				.bvalue = true
+			}, 1);
 
 			break;
 		case (10):
 			append_all_upgrades(gd, (upgrade_t){
 			.type = UPGRADE_TYPE_DMG,
-			.cost = 50,
+			.cost = 75,
 			.ivalue = 2
 			}, 5);
+			append_all_upgrades(gd, (upgrade_t){
+				.type = UPGRADE_TYPE_SHOOT_DELAY,
+				.cost = 75,
+				.ivalue = 1
+			}, 2);
 			
 			append_all_upgrades(gd, (upgrade_t){
 			.type = UPGRADE_TYPE_HP,
-			.cost = 50,
+			.cost = 75,
 			.ivalue = 5
 			}, 10);
+			append_all_upgrades(gd, (upgrade_t){
+				.type = UPGRADE_TYPE_MISSILE,
+				.cost = 75,
+				.fvalue = 0.1
+			}, 2);
 			break;
 	}
 }
