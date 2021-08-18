@@ -727,7 +727,7 @@ void spawn_worm(game_data_t* gd, worm_type_t type, int segments, gs_vec2 pos, fl
 	
 	entity_t* head = malloc(sizeof(entity_t));
 	int hp = 3 * pow(1.2, gd->wave);
-	int dmg = 1 * pow(1.15, gd->wave);
+	int dmg = 1 * pow(1.10, gd->wave);
 	*head = (entity_t){
 		.worm_is_head = true,
 		.hp = hp,
@@ -781,8 +781,8 @@ void update_worms(game_data_t* gd, float delta)
 				base_crystal_amount = 3;
 				death_timer_max = 0.1;
 			} 
-			if (head->dead_timer > death_timer_max) {
-				spawn_crystals(gd, head->position, base_crystal_amount * pow(1.05, gd->wave-1));
+			if (head->dead_timer > death_timer_max) { // * pow(1.05, gd->wave-1)
+				spawn_crystals(gd, head->position, base_crystal_amount);
 
 				gd->worms[i] = gd->worms[worms_size-1];
 				gs_dyn_array_pop(gd->worms);
@@ -886,7 +886,7 @@ void update_worms(game_data_t* gd, float delta)
 							.go_through_walls = false,
 							.explode_radius = 3,
 							.enemy_created = true,
-							.dmg = head->dmg,
+							.dmg = head->dmg*0.5,
 							.accell = 800,
 							
 							
@@ -1097,7 +1097,7 @@ void spawn_turret(game_data_t* gd, gs_vec2 pos, turret_type_t type)
 {
 	entity_t* turret = malloc(sizeof(entity_t));
 	int hp = 5 * pow(1.2, gd->wave);
-	int dmg = 1.5 * pow(1.15, gd->wave);
+	float dmg = 1.5 * pow(1.10, gd->wave);
 	gs_vec4 color = gs_v4(1.0, 1.0, 1.0, 1.0);
 	float turret_shot_delay = 2.f;
 	float turret_burst_shoot_delay = TURRET_BURST_SHOT_DELAY;
@@ -1127,6 +1127,7 @@ void spawn_turret(game_data_t* gd, gs_vec2 pos, turret_type_t type)
 		turret->turret_burst_shoot_delay = 0.05f;
 		turret->turret_burst_count = 30;
 		turret->color = gs_v4(0.7, 0.5, 0.7, 1.0);
+		turret->dmg *= 0.5;
 		//turret->turret
 		turret->turret_legs[0].position = gs_v2(pos.x - 28, pos.y-28);
 		turret->turret_legs[1].position = gs_v2(pos.x + 28, pos.y-28);
@@ -1155,7 +1156,7 @@ void update_turrets(game_data_t* gd, float delta)
 		if (t->dead) {
 			int crystal_amount = 7;
 			if (t->turret_type == TURRET_TYPE_BOSS) crystal_amount = 40;
-			spawn_crystals(gd, t->position, crystal_amount * pow(1.05, gd->wave-1));
+			spawn_crystals(gd, t->position, crystal_amount);
 			spawn_particle_emitter(gd, &(particle_emitter_desc_t){
 				.explode = true,
 				.one_shot = true,
@@ -1421,7 +1422,7 @@ void update_orbs(game_data_t* gd, float delta)
 		//	o->flash = 0.f;
 		
 		if (o->dead) {
-			spawn_crystals(gd, o->position, 5 * pow(1.05, gd->wave-1));
+			spawn_crystals(gd, o->position, 5);
 			spawn_particle_emitter(gd, &(particle_emitter_desc_t){
 				.explode = true,
 				.one_shot = true,
@@ -1719,6 +1720,7 @@ void update_wave_system(game_data_t* gd, float delta)
 				enemies_left_to_spawn--;
 				gs_dyn_array_pop(gd->enemies_to_spawn);
 				gs_vec2 spawn_pos;
+				bool spawned_boss = false;
 				switch (type) {
 					case (ENTITY_TYPE_WORM):
 						spawn_pos.x = WORLD_SIZE_X * stb_frand();
@@ -1748,6 +1750,7 @@ void update_wave_system(game_data_t* gd, float delta)
 						break;
 					case (ENTITY_TYPE_BOSS):
 					{
+						spawned_boss = true;
 						if (stb_frand() > 0.5) {
 							spawn_pos = get_edge_spawnpoint(0);
 							spawn_worm(gd, WORM_TYPE_BOSS, 15, spawn_pos, 16);
@@ -1756,10 +1759,14 @@ void update_wave_system(game_data_t* gd, float delta)
 							spawn_pos.y = 50 + (WORLD_SIZE_Y-100) * stb_frand();
 							spawn_turret(gd, spawn_pos, TURRET_TYPE_BOSS);
 						}
-						continue; // only spawn 1 boss per spawn instance
-						//break;
+						break;
 					}
 				}
+				if (spawned_boss) {
+					gd->spawn_timer = 10;
+					break;
+				}
+
 			}
 		} else {
 			int enemies_alive = 0;

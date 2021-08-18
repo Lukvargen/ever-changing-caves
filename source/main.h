@@ -278,7 +278,7 @@ typedef struct projectile_t
 	float radius;
 	float life_time;
 	float max_life_time;
-	int dmg;
+	float dmg;
 	int explode_radius;
 
 	float seek_radius;

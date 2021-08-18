@@ -121,7 +121,7 @@ char* get_upgrade_string(game_data_t* gd, upgrade_t* upgrade, char* text, int TE
             gs_snprintf(text, TEXT_SIZE, "PROJECTILE EXPLODE+%i\n(%i->%i)", upgrade->ivalue, gd->player.player_explosion_radius, gd->player.player_explosion_radius + upgrade->ivalue);
             break;
         case (UPGRADE_TYPE_SHOOT_DELAY):
-            gs_snprintf(text, TEXT_SIZE, "SHOOT DELAY-%i%%\n(%.2f->%.2f)", (int)(upgrade->ivalue*(1-PLAYER_SHOOT_DELAY_UPGRADE_EFFECT)*100), gd->player.player_shoot_delay, calculate_shoot_delay(gd->player.player_shoot_delay_upgrades+upgrade->ivalue, (int)gd->player.player_dual_shot));
+            gs_snprintf(text, TEXT_SIZE, "SHOOT DELAY-%.0f%%\n(%.2f->%.2f)", upgrade->ivalue*(1-PLAYER_SHOOT_DELAY_UPGRADE_EFFECT)*100, gd->player.player_shoot_delay, calculate_shoot_delay(gd->player.player_shoot_delay_upgrades+upgrade->ivalue, (int)gd->player.player_dual_shot));
             break;
         case (UPGRADE_TYPE_SHOOT_REFLECT):
             gs_snprintf(text, TEXT_SIZE, "SHOT SPLIT CHANCE+%.0f %%\n(%.0f%%->%.0f%%)", upgrade->fvalue*100, gd->player.player_projectile_reflect_chance*100, 100*(gd->player.player_projectile_reflect_chance + upgrade->fvalue));
@@ -267,16 +267,11 @@ void unlock_upgrades(game_data_t* gd)
 				.type = UPGRADE_TYPE_SHOOT_DELAY,
 				.cost = 20,
 				.ivalue = 1
-			}, 3);
+			}, 5);
 			append_all_upgrades(gd, (upgrade_t){
 				.type = UPGRADE_TYPE_SHOOT_REFLECT,
 				.cost = 20,
-				.fvalue = 0.1
-				}, 1);
-			append_all_upgrades(gd, (upgrade_t){
-				.type = UPGRADE_TYPE_SHOOT_REFLECT,
-				.cost = 40,
-				.fvalue = 0.1
+				.fvalue = 0.2
 				}, 1);
 			append_all_upgrades(gd, (upgrade_t){
 				.type = UPGRADE_TYPE_LASER,
@@ -321,13 +316,18 @@ void unlock_upgrades(game_data_t* gd)
 			.fvalue = 0.25
 			}, 4);
 			append_all_upgrades(gd, (upgrade_t){
+				.type = UPGRADE_TYPE_SHOOT_REFLECT,
+				.cost = 20,
+				.fvalue = 0.1
+				}, 1);
+			append_all_upgrades(gd, (upgrade_t){
 				.type = UPGRADE_TYPE_SHOOT_REFLECT_AMOUNT,
-				.cost = 30,
+				.cost = 20,
 				.ivalue = 1
 			}, 2);
 			append_all_upgrades(gd, (upgrade_t){
 				.type = UPGRADE_TYPE_MISSILE,
-				.cost = 30,
+				.cost = 25,
 				.fvalue = 0.2
 			}, 2);
 			break;
