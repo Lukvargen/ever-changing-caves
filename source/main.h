@@ -71,7 +71,8 @@ typedef enum entity_type_t
 	ENTITY_TYPE_WORM,
 	ENTITY_TYPE_TURRET,
 	ENTITY_TYPE_ORB,
-	ENTITY_TYPE_BOSS
+	ENTITY_TYPE_BOSS,
+	ENTITY_TYPE_FINAL_BOSS,
 } entity_type_t;
 
 
@@ -256,6 +257,11 @@ typedef struct entity_t
 			float target_speed;
 			float charge_timer;
 		};
+		struct // final_boss
+		{
+			float final_boss_shoot_time;
+			
+		};
 		
 	};
 } entity_t;
@@ -358,6 +364,8 @@ typedef struct game_data_t
 	gs_dyn_array(entity_t*) turrets;
 	
 	gs_dyn_array(entity_t*) orbs;
+
+	gs_dyn_array(entity_t*) final_bosses;
 
 	gs_dyn_array(crystal_t) crystals;
 	int crystals_currency;

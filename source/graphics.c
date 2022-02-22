@@ -25,6 +25,8 @@ gs_asset_texture_t worm_boss_png;
 gs_asset_texture_t worm_boss_head_png;
 gs_asset_texture_t worm_boss_tail_png;
 
+gs_asset_texture_t final_boss_png;
+
 gs_asset_font_t font_large;
 gs_asset_font_t font_medium;
 gs_asset_font_t font_small;
@@ -71,6 +73,8 @@ void graphics_init(game_data_t* gd)
 	gs_asset_texture_load_from_file("./assets/TurretBossBase.png", &turret_boss_base_png, &desc, true, false);
 	gs_asset_texture_load_from_file("./assets/TurretBossBarrel.png", &turret_boss_barrel_png, &desc, true, false);
 	gs_asset_texture_load_from_file("./assets/TurretBossTop.png", &turret_boss_top_png, &desc, true, false);
+
+	gs_asset_texture_load_from_file("./assets/FinalBoss.png", &final_boss_png, &desc, true, false);
 
 
 	gs_asset_font_load_from_file("./assets/joystix monospace.ttf", &font_large, 32);
@@ -1123,6 +1127,27 @@ void draw_entities(game_data_t* gd, gs_command_buffer_t* gcb)
 
 		gs_graphics_apply_bindings(gcb, &binds);
 		gs_graphics_draw(gcb, &(gs_graphics_draw_desc_t){.start = 0, .count = 6});
+	}
+
+	// final boss
+	int b_size = gs_dyn_array_size(gd->final_bosses);
+	for (int i = 0; i < b_size; i++) {
+		entity_t* b = gd->final_bosses[i];
+
+		color = b->color;
+		flash = b->flash;
+		tex = final_boss_png;
+
+		gs_mat4 translation = gs_mat4_translate(b->position.x, b->position.y, 0.0f);
+
+		float size = final_boss_png.desc.width;
+		gs_mat4 model = gs_mat4_mul_list(2, translation, gs_mat4_scale(final_boss_png.desc.width, final_boss_png.desc.height, 0));
+
+		mvp = gs_mat4_mul(gd->projection, model);
+
+		gs_graphics_apply_bindings(gcb, &binds);
+		gs_graphics_draw(gcb, &(gs_graphics_draw_desc_t){.start = 0, .count = 6});
+
 	}
 
 }

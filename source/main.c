@@ -37,8 +37,13 @@ void update_base_enemies(game_data_t* gd, float delta);
 void spawn_worm(game_data_t* gd, worm_type_t type, int segments, gs_vec2 pos, float radius);
 void delete_worm(entity_t* worm);
 
+void spawn_final_boss(game_data_t* gd, gs_vec2 pos);
+void update_final_boss(game_data_t* gd, float delta);
+
+
 void spawn_crystals(game_data_t* gd, gs_vec2 pos, int amount);
 void update_crystals(game_data_t* gd, float delta);
+
 
 void spawn_powerup(game_data_t* gd, powerup type, gs_vec2 pos);
 particle_emitter_t* spawn_particle_emitter(game_data_t* gd, particle_emitter_desc_t* desc);
@@ -81,6 +86,7 @@ void init()
 	gs_dyn_array_push(gd->enemies, &gd->worms);
 	gs_dyn_array_push(gd->enemies, &gd->turrets);
 	gs_dyn_array_push(gd->enemies, &gd->orbs);
+	gs_dyn_array_push(gd->enemies, &gd->final_bosses);
 		
 	for (int y = 0; y < TILES_SIZE_Y; y++) {
 		for (int x = 0; x < TILES_SIZE_X; x++) {
@@ -105,6 +111,8 @@ void init()
 	//gd->crystals_currency = 1000;
 	shop_init_all_upgrades(gd);
 	//shop_show(gd);
+
+	
 }
 
 
@@ -157,6 +165,7 @@ void update()
 		update_worms(gd, delta);
 		update_turrets(gd, delta);
 		update_orbs(gd, delta);
+		update_final_boss(gd, delta);
 		update_projectiles(gd, delta);
 		update_lasers(gd, delta);
 		update_crystals(gd, delta);
@@ -225,6 +234,8 @@ void restart_game(game_data_t* gd)
 	next_wave(gd);
 	//spawn_worm(gd, WORM_TYPE_BOSS, 15, gs_v2(RESOLUTION_X/2 + 128, RESOLUTION_Y/2), 16);
 	//spawn_turret(gd, gs_v2(RESOLUTION_X/2, RESOLUTION_Y/2), TURRET_TYPE_BOSS);
+
+	spawn_final_boss(gd, gs_v2(WORLD_SIZE_X/2, WORLD_SIZE_Y/2));
 }
 
 void update_tiles(game_data_t* gd, float delta)
@@ -1522,7 +1533,50 @@ void update_orbs(game_data_t* gd, float delta)
 }
 
 
+void spawn_final_boss(game_data_t* gd, gs_vec2 pos)
+{
+	entity_t* boss = malloc(sizeof(entity_t));
+	*boss = (entity_t) {
+		.color = gs_v4(1.f,1.f,1.f,1.f),
+		.dmg = 1,
+		.position = pos,
+		.radius = 32,
+		.max_hp = 100,
+		.hp = 100
+		
+	};
+	gs_dyn_array_push(gd->final_bosses, boss); 
+}
 
+void update_final_boss(game_data_t* gd, float delta)
+{
+	int size = gs_dyn_array_size(gd->final_bosses);
+	for (int i = 0; i < size; i++) {
+		entity_t* boss = gd->final_bosses[i];
+
+		if (boss->dead) {
+			spawn_crystals(gd, boss->position, 5);
+			spawn_particle_emitter(gd, &(particle_emitter_desc_t){
+				.explode = true,
+				.one_shot = true,
+				.particle_amount = 12,
+				.particle_color = boss->color,
+				.particle_lifetime = 0.5,
+				.particle_shink_out = true,
+				.particle_size = gs_v2(10, 10),
+				.particle_velocity = gs_v2(50, 0),
+				.position = boss->position,
+				.rand_rotation_range = 2 * 3.14,
+				.rand_velocity_range = 0.5
+			});
+			
+			free(boss);
+			remove_entity(gd->final_bosses, &size, &i);
+			continue;
+		}
+
+	}
+}
 
 void spawn_powerup(game_data_t* gd, powerup type, gs_vec2 pos)
 {
