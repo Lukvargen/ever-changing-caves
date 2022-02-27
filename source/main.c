@@ -8,6 +8,10 @@
 #define STB_PERLIN_IMPLEMENTATION
 #include <stb_perlin.h>
 
+#define GS_GUI_IMPL
+#include <gs/util/gs_gui.h>
+
+
 #include "main.h"
 #include "graphics.h"
 
@@ -66,7 +70,10 @@ void next_wave(game_data_t* gd);
 
 void init() 
 {
-	game_data_t* gd = gs_engine_user_data(game_data_t);
+	game_data_t* gd = gs_user_data(game_data_t);
+
+	gd->rand = gs_rand_seed(1); // != 0
+
 
 	gd->hit_sound_hndl = gs_audio_load_from_file("./assets/Hit_Hurt2.wav");
 	gd->crystal_pickup_sound_hndl = gs_audio_load_from_file("./assets/pickup.wav");
@@ -123,11 +130,11 @@ float t = 0.0;
 void update()
 {
 	gs_vec2 ws = gs_platform_window_sizev(gs_platform_main_window());
-	game_data_t* gd = gs_engine_user_data(game_data_t);
+	game_data_t* gd = gs_user_data(game_data_t);
 	float delta = gs_platform_delta_time();
 
 	if (gs_platform_key_pressed(GS_KEYCODE_ESC)) {
-		gs_engine_quit();
+		gs_quit();
 	} else if (gs_platform_key_pressed(GS_KEYCODE_R)) {
 		restart_game(gd);
 		return;
@@ -338,7 +345,7 @@ void update_player(game_data_t* gd, float delta)
 	int tile_x = pos->x/TILE_SIZE;
 	int tile_y = pos->y/TILE_SIZE;
 	if (is_tile_solid(gd, tile_x, tile_y)) {
-		//entity_take_dmg(gd, p, p->max_hp * 0.1, p->position, gs_v2(1,0)); //gs_v2(stb_frand(), stb_frand()));
+		//entity_take_dmg(gd, p, p->max_hp * 0.1, p->position, gs_v2(1,0)); //gs_v2(gs_rand_gen(&gd->rand), gs_rand_gen(&gd->rand)));
 		
 		explode_tiles(gd, tile_x, tile_y, 3);
 	} else {
@@ -468,11 +475,11 @@ void spawn_laser(game_data_t* gd, int dmg, gs_vec2 pos, float radius, gs_color_t
 	int targets_size = gs_dyn_array_size(targets); 
 	
 	if (targets_size > 1) {
-		entity_take_dmg(gd, targets[targets_size-1], dmg, targets[targets_size-1]->position, gs_v2(stb_frand()*2-1, stb_frand()*2-1));
+		entity_take_dmg(gd, targets[targets_size-1], dmg, targets[targets_size-1]->position, gs_v2(gs_rand_gen(&gd->rand)*2-1, gs_rand_gen(&gd->rand)*2-1));
 		for (int i = 0; i < targets_size-1; i++) {
 			entity_t* enemy1 = targets[i];
 			entity_t* enemy2 = targets[i+1];
-			entity_take_dmg(gd, enemy1, dmg, enemy1->position, gs_v2(stb_frand()*2-1, stb_frand()*2-1));
+			entity_take_dmg(gd, enemy1, dmg, enemy1->position, gs_v2(gs_rand_gen(&gd->rand)*2-1, gs_rand_gen(&gd->rand)*2-1));
 			gs_dyn_array_push(laser.points, enemy1->position);
 
 			gs_vec2 pos = enemy1->position;
@@ -482,8 +489,8 @@ void spawn_laser(game_data_t* gd, int dmg, gs_vec2 pos, float radius, gs_color_t
 				float dist = gs_vec2_len(diff);
 
 				float angle = atan2f(diff.y, diff.x);
-				diff.x = cos(angle + (stb_frand()-0.5)*3.14) * dist * (s/4.f);
-				diff.y = sin(angle + (stb_frand()-0.5)*3.14) * dist * (s/4.f);
+				diff.x = cos(angle + (gs_rand_gen(&gd->rand)-0.5)*3.14) * dist * (s/4.f);
+				diff.y = sin(angle + (gs_rand_gen(&gd->rand)-0.5)*3.14) * dist * (s/4.f);
 				pos.x = pos.x + diff.x;
 				pos.y = pos.y + diff.y;
 				gs_dyn_array_push(laser.points, pos);
@@ -602,7 +609,7 @@ void update_projectiles(game_data_t* gd, float delta)
 
 						spawn_laser(gd, 1, enemy->position, 128, gs_color(125, 91, 166, 255), gd->player.player_laser_lvl+1);
 
-						if (stb_frand() <= gd->player.player_projectile_reflect_chance) {
+						if (gs_rand_gen(&gd->rand) <= gd->player.player_projectile_reflect_chance) {
 							p->entity_ignore = enemy;
 							for (int i = 0; i < gd->player.player_projectile_reflect_amount; i++) {
 
@@ -621,15 +628,15 @@ void update_projectiles(game_data_t* gd, float delta)
 								int vel_length = gs_vec2_len(p->velocity);
 								
 								float angle = atan2f(p->velocity.y, p->velocity.x);
-								new_projectile.velocity.x = cos(angle + (stb_frand()-0.5)*3.14) * vel_length;
-								new_projectile.velocity.y = sin(angle + (stb_frand()-0.5)*3.14) * vel_length;
+								new_projectile.velocity.x = cos(angle + (gs_rand_gen(&gd->rand)-0.5)*3.14) * vel_length;
+								new_projectile.velocity.y = sin(angle + (gs_rand_gen(&gd->rand)-0.5)*3.14) * vel_length;
 								p_size++;
 								spawn_projectile(gd, &new_projectile);
 							}
 							
 						}
 
-						if (stb_frand() <= gd->player.player_spawn_missile_chance) {
+						if (gs_rand_gen(&gd->rand) <= gd->player.player_spawn_missile_chance) {
 							p_size++;
 							spawn_projectile(gd, &(projectile_t){
 								.color = gs_v4(0.2, 0.4, 0.3, 1.0),
@@ -643,7 +650,7 @@ void update_projectiles(game_data_t* gd, float delta)
 								.seek_max_speed = 200.f,
 								.seek_max_velocity = 200.f,
 								.seek_radius = 400.f,
-								.velocity = gs_v2(cos(stb_frand()*3.14*2) * 200, sin(stb_frand()*3.14*2) * 200),
+								.velocity = gs_v2(cos(gs_rand_gen(&gd->rand)*3.14*2) * 200, sin(gs_rand_gen(&gd->rand)*3.14*2) * 200),
 								.particle_emitter = spawn_particle_emitter(gd, &(particle_emitter_desc_t){
 									.particle_amount = p->particle_emitter->particle_amount,
 									.particle_color = gs_v4(0.2, 0.7, 0.3, 1.0),
@@ -882,7 +889,7 @@ void update_worms(game_data_t* gd, float delta)
 						head->worm_shoot_timer = 0;
 						gs_vec2 spawn_pos = gs_vec2_add(head->position, gs_vec2_scale(face_dir, head->radius*0.8));
 
-						float rand_rot = 2.0*(0.5 - stb_frand()) * 0.1;
+						float rand_rot = 2.0*(0.5 - gs_rand_gen(&gd->rand)) * 0.1;
 						gs_vec2 shoot_dir = face_dir;
 						
 						shoot_dir.x = face_dir.x * cos(rand_rot) - face_dir.y * sin(rand_rot);
@@ -1019,9 +1026,9 @@ void update_particle_emitters(game_data_t* gd, float delta)
 						p->life_time = 0.f;
 						p->size = emitter->particle_size;
 						p->velocity = emitter->particle_velocity;
-						float rand_rot = 2.0*(0.5 - stb_frand()) * emitter->rand_rotation_range;
+						float rand_rot = 2.0*(0.5 - gs_rand_gen(&gd->rand)) * emitter->rand_rotation_range;
 						
-						float vel_rand_range = 1.0 - (stb_frand() * emitter->rand_velocity_range);
+						float vel_rand_range = 1.0 - (gs_rand_gen(&gd->rand) * emitter->rand_velocity_range);
 						float vel_x = p->velocity.x * vel_rand_range;
 						float vel_y = p->velocity.y * vel_rand_range;
 						p->velocity.x = vel_x * cos(rand_rot) - vel_y * sin(rand_rot);
@@ -1281,7 +1288,7 @@ void update_turrets(game_data_t* gd, float delta)
 						explode_tiles(gd, t->position.x/TILE_SIZE,t->position.y/TILE_SIZE, 8);
 						projectile_vel = gs_vec2_scale(target_dir, 500);
 						int p_radius_mul = 1;
-						int explode_radius = (int)(stb_frand()*2);
+						int explode_radius = (int)(gs_rand_gen(&gd->rand)*2);
 						if (t->turret_shot_count >= t->turret_burst_count) {
 							p_radius_mul = 2;
 							explode_radius = 8;
@@ -1364,7 +1371,7 @@ void update_turrets(game_data_t* gd, float delta)
 
 				if (leg->time_moving >= leg_move_time) {
 					leg->moving = false;
-					leg->time_moving = -stb_frand()*0.25;
+					leg->time_moving = -gs_rand_gen(&gd->rand)*0.25;
 				}
 			}
 		}
@@ -1375,7 +1382,7 @@ void update_turrets(game_data_t* gd, float delta)
 void spawn_orb(game_data_t* gd, orb_type_t orb_type, gs_vec2 pos)
 {
 	gs_vec2 rand_vel;
-	float rand_angle = 2 * 3.14 * stb_frand();
+	float rand_angle = 2 * 3.14 * gs_rand_gen(&gd->rand);
 	rand_vel.x = cos(rand_angle) * 75;
 	rand_vel.y = sin(rand_angle) * 75;
 
@@ -1455,7 +1462,7 @@ void update_orbs(game_data_t* gd, float delta)
 
 		o->charge_timer -= delta;
 		if (o->charge_timer <= 0) {
-			o->charge_timer = stb_frand() * 2 + 1;
+			o->charge_timer = gs_rand_gen(&gd->rand) * 2 + 1;
 			gs_vec2 dir = gs_vec2_sub(gd->player.position, o->position);
 			dir = gs_vec2_norm(dir);
 			o->velocity.x = dir.x * 300;
@@ -1673,7 +1680,7 @@ void entity_take_dmg(game_data_t* gd, entity_t* entity, float dmg, gs_vec2 hit_p
 void spawn_crystals(game_data_t* gd, gs_vec2 pos, int amount)
 {
 	for (int i = 0; i < amount; i++) {
-		gs_vec2 rand_vel = gs_v2(stb_frand()-0.5, stb_frand()-0.5);
+		gs_vec2 rand_vel = gs_v2(gs_rand_gen(&gd->rand)-0.5, gs_rand_gen(&gd->rand)-0.5);
 		rand_vel = gs_vec2_norm(rand_vel);
 		rand_vel.x *= 400;
 		rand_vel.y *= 400;
@@ -1725,25 +1732,25 @@ void update_crystals(game_data_t* gd, float delta)
 }
 
 
-gs_vec2 get_edge_spawnpoint(int margin)
+gs_vec2 get_edge_spawnpoint(game_data_t* gd, int margin)
 {
 	gs_vec2 spawn_pos;
 
-	if (stb_frand() > 0.5) {
-		if (stb_frand() > 0.5) {
+	if (gs_rand_gen(&gd->rand) > 0.5) {
+		if (gs_rand_gen(&gd->rand) > 0.5) {
 			spawn_pos.x = margin;
-			spawn_pos.y = (WORLD_SIZE_Y-margin*2) * stb_frand() + margin;
+			spawn_pos.y = (WORLD_SIZE_Y-margin*2) * gs_rand_gen(&gd->rand) + margin;
 		} else {
 			spawn_pos.x = WORLD_SIZE_X - margin;
-			spawn_pos.y = (WORLD_SIZE_Y-margin*2) * stb_frand() + margin;
+			spawn_pos.y = (WORLD_SIZE_Y-margin*2) * gs_rand_gen(&gd->rand) + margin;
 		}
 	} else {
-		if (stb_frand() > 0.5) {
+		if (gs_rand_gen(&gd->rand) > 0.5) {
 			spawn_pos.y = margin;
-			spawn_pos.x = (WORLD_SIZE_X-margin*2) * stb_frand() + margin;
+			spawn_pos.x = (WORLD_SIZE_X-margin*2) * gs_rand_gen(&gd->rand) + margin;
 		} else {
 			spawn_pos.y = WORLD_SIZE_Y - margin;
-			spawn_pos.x = (WORLD_SIZE_X-margin*2) * stb_frand() + margin;
+			spawn_pos.x = (WORLD_SIZE_X-margin*2) * gs_rand_gen(&gd->rand) + margin;
 		}
 	}
 	return spawn_pos;
@@ -1763,12 +1770,12 @@ void update_wave_system(game_data_t* gd, float delta)
 				spawn_amount_random = 3;
 			else if (gd->wave >= 2)
 				spawn_amount_random = 2;
-			int spawn_amount = 1 + (int)(stb_frand() * spawn_amount_random);
+			int spawn_amount = 1 + (int)(gs_rand_gen(&gd->rand) * spawn_amount_random);
 			if (spawn_amount > enemies_left_to_spawn)
 				spawn_amount = enemies_left_to_spawn;
 			
 			for (int i = 0; i < spawn_amount; i++) {
-				int index = (int)(stb_frand()*enemies_left_to_spawn);
+				int index = (int)(gs_rand_gen(&gd->rand)*enemies_left_to_spawn);
 				entity_type_t type = gd->enemies_to_spawn[index];
 				gd->enemies_to_spawn[index] = gd->enemies_to_spawn[enemies_left_to_spawn-1];
 				enemies_left_to_spawn--;
@@ -1777,40 +1784,41 @@ void update_wave_system(game_data_t* gd, float delta)
 				bool spawned_boss = false;
 				switch (type) {
 					case (ENTITY_TYPE_WORM):
-						spawn_pos.x = WORLD_SIZE_X * stb_frand();
+						spawn_pos.x = WORLD_SIZE_X * gs_rand_gen(&gd->rand);
 						spawn_pos.y = 0;
-						if (stb_frand() > 0.5) {
+						if (gs_rand_gen(&gd->rand) > 0.5) {
 							spawn_pos.y = WORLD_SIZE_Y;
 						}
 						worm_type_t worm_type = WORM_TYPE_NORMAL;
-						if (stb_frand() > 0.5)
+						if (gs_rand_gen(&gd->rand) > 0.5)
 							worm_type = WORM_TYPE_SINUS;
 						spawn_worm(gd, worm_type, 4, spawn_pos, 6);
 						break;
 					case (ENTITY_TYPE_TURRET):
-						spawn_pos.x = (WORLD_SIZE_X-100) * stb_frand() + 50;
-						spawn_pos.y = (WORLD_SIZE_Y-100) * stb_frand() + 50;
+						spawn_pos.x = (WORLD_SIZE_X-100) * gs_rand_gen(&gd->rand) + 50;
+						spawn_pos.y = (WORLD_SIZE_Y-100) * gs_rand_gen(&gd->rand) + 50;
 						turret_type_t type = TURRET_TYPE_NORMAL;
-						if (stb_frand() >= 0.6) {
+						if (gs_rand_gen(&gd->rand) >= 0.6) {
 							type = TURRET_TYPE_SPIN;
 							
 						}
 						spawn_turret(gd, spawn_pos, type);
 						break;
 					case (ENTITY_TYPE_ORB):
-						spawn_pos = get_edge_spawnpoint(20);
-						int orb_type = stb_rand() % ORB_TYPE_SIZE;
+						spawn_pos = get_edge_spawnpoint(gd, 20);
+						
+						int orb_type = gs_rand_gen_long(&gd->rand) % ORB_TYPE_SIZE;
 						spawn_orb(gd, orb_type, spawn_pos);
 						break;
 					case (ENTITY_TYPE_BOSS):
 					{
 						spawned_boss = true;
-						if (stb_frand() > 0.5) {
-							spawn_pos = get_edge_spawnpoint(0);
+						if (gs_rand_gen(&gd->rand) > 0.5) {
+							spawn_pos = get_edge_spawnpoint(gd, 0);
 							spawn_worm(gd, WORM_TYPE_BOSS, 15, spawn_pos, 16);
 						} else {
-							spawn_pos.x = 50 + (WORLD_SIZE_X-100) * stb_frand();
-							spawn_pos.y = 50 + (WORLD_SIZE_Y-100) * stb_frand();
+							spawn_pos.x = 50 + (WORLD_SIZE_X-100) * gs_rand_gen(&gd->rand);
+							spawn_pos.y = 50 + (WORLD_SIZE_Y-100) * gs_rand_gen(&gd->rand);
 							spawn_turret(gd, spawn_pos, TURRET_TYPE_BOSS);
 						}
 						break;

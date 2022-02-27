@@ -8,6 +8,12 @@
 #define GS_ASSET_IMPL
 #include <gs/util/gs_asset.h>
 
+#include <gs/util/gs_idraw.h>
+
+#include <gs/util/gs_gui.h>
+
+
+#include "style_data.h"
 
 gs_asset_texture_t circle_16px;
 gs_asset_texture_t player_body_png;
@@ -48,7 +54,11 @@ void graphics_init(game_data_t* gd)
 	
 
     gd->gcb = gs_command_buffer_new();
-	gd->gsi = gs_immediate_draw_new();
+	gd->gsi = gs_immediate_draw_new(gs_platform_main_window());
+	
+
+	
+	
 
 	gs_graphics_texture_desc_t desc = (gs_graphics_texture_desc_t){
 		.format = GS_GRAPHICS_TEXTURE_FORMAT_RGBA8,
@@ -87,12 +97,25 @@ void graphics_init(game_data_t* gd)
 	init_particles(gd);
 	init_entities(gd);
 	
+	gs_gui_init(&gd->gs_gui, gs_platform_main_window());
+	g_app.fonts[GUI_FONT_LABEL] = font_medium;
+	g_app.fonts[GUI_FONT_BUTTON] = font_medium;
+	g_app.fonts[GUI_FONT_BUTTONFOCUS] = font_medium;
+	gd->stylesheet = gs_gui_style_sheet_create(&gd->gs_gui, &menu_style_sheet_desc);
+
+
+	//gs_vec2 fbs = gs_platform_framebuffer_sizev(gd->fbo.id);
+	//gs_println("gs_platform_framebuffer_sizev %f %f", fbs.x, fbs.y);
+	
+	
+	
 }
 
 void draw_game(game_data_t* gd)
 {
 	gs_command_buffer_t* gcb = &gd->gcb;
 	gs_immediate_draw_t* gsi = &gd->gsi;
+	
 
 	gs_graphics_clear_desc_t clear = (gs_graphics_clear_desc_t) {
 		.actions = &(gs_graphics_clear_action_t){.color = {0.05f, 0.05f, 0.05f, 1.f}}
@@ -119,6 +142,31 @@ void draw_game(game_data_t* gd)
 
 	gd->projection = gs_mat4_ortho(gd->camera_pos.x, RESOLUTION_X + gd->camera_pos.x, RESOLUTION_Y + gd->camera_pos.y, gd->camera_pos.y, -100, 100);
 	gsi_ortho(gsi, 0, RESOLUTION_X, RESOLUTION_Y, 0, 0, 100);
+
+	gs_gui_begin(&gd->gs_gui, gs_v2(RESOLUTION_X, RESOLUTION_Y));
+	{
+		gs_gui_set_style_sheet(&gd->gs_gui, &gd->stylesheet);
+
+
+		if (gs_gui_begin_window_ex(&gd->gs_gui, "Demo Window", gs_gui_rect(250, 250, 250, 250), NULL, GS_GUI_OPT_NOTITLE)) {
+			
+			
+			gs_gui_text(&gd->gs_gui, "TEXT");
+		}
+		gs_gui_end_window(&gd->gs_gui);
+
+
+
+
+		//gs_gui_demo_window(&gd->gs_gui, gs_gui_rect(0, 0, 500, 500), NULL);
+
+		//gs_gui_begin_panel(&gd->gs_gui, "SomePanel");
+
+		//	gs_gui_text(&gd->gs_gui, "TEXT");
+
+		//gs_gui_end_panel(&gd->gs_gui);
+	}
+	gs_gui_end(&gd->gs_gui);
 
 
 	// Hpbar
@@ -307,7 +355,8 @@ void draw_game(game_data_t* gd)
 
 	
 	if (gd->game_over) {
-		gs_vec2 dims = gs_asset_font_get_text_dimensions(&font_large, "GAME OVER");
+		char* game_over = "GAME OVER";
+		gs_vec2 dims = gs_asset_font_text_dimensions(&font_large, game_over, strlen(game_over));
 		int y = (RESOLUTION_Y - dims.y) / 2;
 		gsi_text(gsi, (RESOLUTION_X - dims.x) / 2, y, "GAME OVER", &font_large, false, 255, 255, 255, 255);
 		gsi_defaults(gsi);
@@ -349,6 +398,14 @@ void draw_game(game_data_t* gd)
 		draw_particles(gd, gcb);
 		draw_entities(gd, gcb);
 		gsi_draw(gsi, gcb);
+
+		
+		//gs_vec2 fbs2 = gs_platform_framebuffer_sizev(gd->fbo.id);
+		//gs_graphics_set_viewport(gcb,0,0,(int)fbs2.x,(int)fbs2.y);
+
+		//gs_graphics_set_viewport(gcb, 0, 0, RESOLUTION_X, RESOLUTION_Y);
+		gs_gui_render(&gd->gs_gui, gcb, gs_v2(RESOLUTION_X, RESOLUTION_Y));
+
 	gs_graphics_end_render_pass(gcb);
 	
 
@@ -358,6 +415,13 @@ void draw_game(game_data_t* gd)
 		gs_graphics_clear(gcb, &clear);
 		// draws quad with frame buffer image
 		draw_screen(gd, gcb);
+
+		//gs_gui_render(&gd->gs_gui, gcb);
+		//gs_graphics_set_viewport(gcb,0,0,RESOLUTION_X,RESOLUTION_Y);
+		//gs_gui_render(&gd->gs_gui, gcb);
+
+		//gs_gui_render(&gd->gs_gui, gcb, gs_v2(RESOLUTION_X, RESOLUTION_Y));
+
 	gs_graphics_end_render_pass(gcb);
 
 	
@@ -760,6 +824,7 @@ void init_framebuffer(game_data_t* gd)
 
 {
     gd->fbo = gs_graphics_framebuffer_create(NULL);
+	
 	// construct color render target
 	gd->rt = gs_graphics_texture_create(
 		&(gs_graphics_texture_desc_t) {

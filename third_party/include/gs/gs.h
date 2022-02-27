@@ -36,8 +36,8 @@
 
 =================================================================================================================*/
 
-#ifndef __GS_INCLUDED_H__
-#define __GS_INCLUDED_H__
+#ifndef GS_H
+#define GS_H
 
 /*═█═════════════════════════════════════════════════════════════════════════════════════█═╗
 ████ ██████╗ ██╗   ██╗███╗   ██╗███████╗██╗     ██╗███╗   ██╗ ██████╗ ███████╗██████╗ ██████═█
@@ -82,6 +82,7 @@
         * GS_CONTAINERS
         * GS_ASSET_TYPES
         * GS_MATH
+		* GS_LEXER
         * GS_PLATFORM
         * GS_GRAPHICS
         * GS_AUDIO
@@ -135,7 +136,7 @@
         further in the code for all provided options.
 
     It's also possible to define GS_NO_HIJACK_MAIN for your application. This will make it so gunslinger will not be
-    the main entry point to your application. You will instead be responsible for creating an engine instance and 
+    the main entry point to your application. You will instead be responsible for creating a gunslinger instance and 
     passing in your application description to it.
 
         #define GS_NO_HIJACK_MAIN
@@ -143,9 +144,9 @@
         int32_t main(int32_t argv, char** argc)
         {
             gs_app_desc_t app = {0}; // Fill this with whatever your app needs
-            gs_engine_create(app);   // Create instance of engine for framework and run
-            while (gs_engine_app()->is_running) {
-                gs_engine_frame();
+            gs_create(app);   // Create instance of framework and run
+            while (gs_app()->is_running) {
+                gs_frame();
             }
             return 0;
        }
@@ -155,7 +156,7 @@
         Internally, gunslinger does its best to handle the boiler plate drudge work of implementing (in correct order) 
         the various layers required for a basic hardware accelerated multi-media application program to work. This involves allocating 
         memory for internal data structures for these layers as well initializing them in a particular order so they can inter-operate
-        as expected. If you're interested in taking care of this yourself, look at the `gs_engine_frame()` function to get a feeling
+        as expected. If you're interested in taking care of this yourself, look at the `gs_frame()` function to get a feeling
         for how this is being handled.
 
     GS_MATH:
@@ -542,7 +543,7 @@
 
 /*===================
 // PLATFORM DEFINES
-===================*/
+===================*/ 
 
 /* Platform Android */
 #if (defined __ANDROID__)
@@ -556,6 +557,8 @@
 
 /* Platform Windows */
 #elif (defined _WIN32 || defined _WIN64)
+
+    #define __USE_MINGW_ANSI_STDIO  1
 
     // Necessary windows defines before including windows.h, because it's retarded.
     #define OEMRESOURCE
@@ -698,6 +701,29 @@ typedef bool32_t          bool32;
 
 #define gs_int2voidp(I) (void*)(uintptr_t)(I)
 
+#define gs_if(INIT, CHECK, ...)\
+    do {\
+        INIT;\
+        if (CHECK)\
+        {\
+            __VA_ARGS__\
+        }\
+    } while (0) 
+
+//=== Logging ===//
+
+#define gs_log_success(MESSAGE, ...)\
+    gs_println("SUCCESS::%s::%s(%zu)::" MESSAGE, __FILE__, __FUNCTION__, __LINE__, ##__VA_ARGS__)
+
+#define gs_log_error(MESSAGE, ...)\
+    do {\
+        gs_println("ERROR::%s::%s(%zu)::" MESSAGE, __FILE__, __FUNCTION__, __LINE__, ##__VA_ARGS__);\
+    gs_assert(false);\
+    } while (0)
+
+#define gs_log_warning(MESSAGE, ...)\
+    gs_println("WARNING::%s::%s(%zu)::" MESSAGE, __FILE__, __FUNCTION__, __LINE__, ##__VA_ARGS__)
+
 /*===================================
 // Memory Allocation Utils
 ===================================*/
@@ -834,6 +860,7 @@ gs_color_t gs_color_ctor(uint8_t r, uint8_t g, uint8_t b, uint8_t a)
 #define GS_COLOR_GREEN  gs_color(0, 255, 0, 255)
 #define GS_COLOR_BLUE   gs_color(0, 0, 255, 255)
 #define GS_COLOR_ORANGE gs_color(255, 100, 0, 255)
+#define GS_COLOR_YELLOW gs_color(255, 255, 0, 255)
 #define GS_COLOR_PURPLE gs_color(128, 0, 128, 255)
 
 gs_force_inline 
@@ -856,6 +883,8 @@ gs_string_length(const char* txt)
     }
     return sz;
 }
+
+#define gs_strlen gs_string_length
 
 // Expects null terminated strings
 gs_force_inline b32 
@@ -938,7 +967,7 @@ gs_util_str_is_numeric(const char* str)
     {
         while (*at == '\n' || *at == '\t' || *at == ' ' || *at == '\r') at++;;
         char c = *at++;
-        if (c >= '0' && c <= '9')
+        if (c < '0' || c > '9')
         {
             return false;
         } 
@@ -1224,6 +1253,26 @@ void gs_fprintln
     gs_fprintf(fp, "\n");
 }
 
+gs_force_inline
+void gs_fprintln_t
+(
+	FILE* fp, 
+	uint32_t tabs,
+	const char* fmt, 
+	...
+)
+{
+    va_list args;
+    va_start(args, fmt);
+	for (uint32_t i = 0; i < tabs; ++i)
+	{
+		gs_fprintf(fp, "\t");
+	}
+    vfprintf(fp, fmt, args);
+    va_end(args);
+    gs_fprintf(fp, "\n");
+}
+
 #ifdef __MINGW32__
 #define gs_snprintf(__NAME, __SZ, __FMT, ...) __mingw_snprintf(__NAME, __SZ, __FMT, ## __VA_ARGS__)
 #else
@@ -1249,7 +1298,7 @@ void gs_snprintf
 
 #define gs_snprintfc(__NAME, __SZ, __FMT, ...)\
     char __NAME[__SZ] = gs_default_val();\
-    gs_snprintf(__NAME, __SZ, __FMT, ## __VA_ARGS__);
+    gs_snprintf(__NAME, __SZ, __FMT, ## __VA_ARGS__); 
 
 gs_force_inline
 uint32_t gs_util_safe_truncate_u64(uint64_t value)
@@ -1522,49 +1571,22 @@ do {\
     __T* gs_macro_cat(__NAME, __LINE__) = &(__NAME);\
     gs_byte_buffer_read_bulk(__BUFFER, (void**)&gs_macro_cat(__NAME, __LINE__), __SZ);
 
-/* Desc */
 GS_API_DECL void gs_byte_buffer_init(gs_byte_buffer_t* buffer);
-
-/* Desc */
-GS_API_DECL gs_byte_buffer_t gs_byte_buffer_new();
-
-/* Desc */
-GS_API_DECL void gs_byte_buffer_free(gs_byte_buffer_t* buffer);
-
-/* Desc */
-GS_API_DECL void gs_byte_buffer_clear(gs_byte_buffer_t* buffer);
-
-/* Desc */
-GS_API_DECL void gs_byte_buffer_resize(gs_byte_buffer_t* buffer, size_t sz);
-
-/* Desc */
-GS_API_DECL void gs_byte_buffer_seek_to_beg(gs_byte_buffer_t* buffer);
-
-/* Desc */
-GS_API_DECL void gs_byte_buffer_seek_to_end(gs_byte_buffer_t* buffer);
-
-/* Desc */
-GS_API_DECL void gs_byte_buffer_advance_position(gs_byte_buffer_t* buffer, size_t sz);
-
-/* Desc */
-GS_API_DECL void gs_byte_buffer_write_str(gs_byte_buffer_t* buffer, const char* str);                   // Expects a null terminated string
-
-/* Desc */
-GS_API_DECL void gs_byte_buffer_read_str(gs_byte_buffer_t* buffer, char* str);                          // Expects an allocated string
-
-/* Desc */
-GS_API_DECL void gs_byte_buffer_write_bulk(gs_byte_buffer_t* buffer, void* src, size_t sz);
-
-/* Desc */
-GS_API_DECL void gs_byte_buffer_read_bulk(gs_byte_buffer_t* buffer, void** dst, size_t sz);
-
-/* Desc */
-GS_API_DECL gs_result gs_byte_buffer_write_to_file(gs_byte_buffer_t* buffer, const char* output_path);  // Assumes that the output directory exists
-
-/* Desc */
-GS_API_DECL gs_result gs_byte_buffer_read_from_file(gs_byte_buffer_t* buffer, const char* file_path);   // Assumes an allocated byte buffer
-
-/* Desc */
+GS_API_DECL gs_byte_buffer_t gs_byte_buffer_new(); 
+GS_API_DECL void gs_byte_buffer_free(gs_byte_buffer_t* buffer); 
+GS_API_DECL void gs_byte_buffer_clear(gs_byte_buffer_t* buffer); 
+GS_API_DECL bool gs_byte_buffer_empty(gs_byte_buffer_t* buffer);
+GS_API_DECL size_t gs_byte_buffer_size(gs_byte_buffer_t* buffer);
+GS_API_DECL void gs_byte_buffer_resize(gs_byte_buffer_t* buffer, size_t sz); 
+GS_API_DECL void gs_byte_buffer_seek_to_beg(gs_byte_buffer_t* buffer); 
+GS_API_DECL void gs_byte_buffer_seek_to_end(gs_byte_buffer_t* buffer); 
+GS_API_DECL void gs_byte_buffer_advance_position(gs_byte_buffer_t* buffer, size_t sz); 
+GS_API_DECL void gs_byte_buffer_write_str(gs_byte_buffer_t* buffer, const char* str);                   // Expects a null terminated string 
+GS_API_DECL void gs_byte_buffer_read_str(gs_byte_buffer_t* buffer, char* str);                          // Expects an allocated string 
+GS_API_DECL void gs_byte_buffer_write_bulk(gs_byte_buffer_t* buffer, void* src, size_t sz); 
+GS_API_DECL void gs_byte_buffer_read_bulk(gs_byte_buffer_t* buffer, void** dst, size_t sz); 
+GS_API_DECL gs_result gs_byte_buffer_write_to_file(gs_byte_buffer_t* buffer, const char* output_path);  // Assumes that the output directory exists 
+GS_API_DECL gs_result gs_byte_buffer_read_from_file(gs_byte_buffer_t* buffer, const char* file_path);   // Assumes an allocated byte buffer 
 GS_API_DECL void gs_byte_buffer_memset(gs_byte_buffer_t* buffer, uint8_t val);
 
 /*===================================
@@ -1788,6 +1810,15 @@ void __gs_hash_table_init_impl(void** ht, size_t sz)
         (__HT)->klpvl = (size_t)(klpvl);\
     } while (0)
 
+#define gs_hash_table_reserve(_HT, _KT, _VT, _CT)\
+    do {\
+        if ((_HT) == NULL) {\
+            gs_hash_table_init((_HT), _KT, _VT);\
+        }\
+        gs_dyn_array_reserve(_HT->data, _CT);\
+    } while (0)
+
+    // ((__HT) != NULL ? (__HT)->size : 0) // gs_dyn_array_size((__HT)->data) : 0)
 #define gs_hash_table_size(__HT)\
     ((__HT) != NULL ? gs_dyn_array_size((__HT)->data) : 0)
 
@@ -1879,6 +1910,8 @@ void __gs_hash_table_init_impl(void** ht, size_t sz)
 gs_force_inline
 uint32_t gs_hash_table_get_key_index_func(void** data, void* key, size_t key_len, size_t val_len, size_t stride, size_t klpvl)
 {
+    if (!data || !key) return GS_HASH_TABLE_INVALID_INDEX;
+
     // Need a better way to handle this. Can't do it like this anymore.
     // Need to fix this. Seriously messing me up.
     uint32_t capacity = gs_dyn_array_capacity(*data);
@@ -1925,6 +1958,9 @@ uint32_t gs_hash_table_get_key_index_func(void** data, void* key, size_t key_len
     ((__HT)->tmp_key = (__HTK),\
         (gs_hash_table_get_key_index_func((void**)&(__HT->data), (void*)&(__HT->tmp_key), sizeof(__HT->tmp_key), sizeof(__HT->tmp_val), __HT->stride, __HT->klpvl) != GS_HASH_TABLE_INVALID_INDEX))
 
+#define gs_hash_table_exists(__HT, __HTK)\
+		(__HT && gs_hash_table_key_exists((__HT), (__HTK)))
+
 #define gs_hash_table_erase(__HT, __HTK)\
     do {\
         /* Get idx for key */\
@@ -1932,6 +1968,7 @@ uint32_t gs_hash_table_get_key_index_func(void** data, void* key, size_t key_len
         uint32_t __IDX = gs_hash_table_get_key_index_func((void**)&(__HT)->data, (void*)&((__HT)->tmp_key), sizeof((__HT)->tmp_key), sizeof((__HT)->tmp_val), (__HT)->stride, (__HT)->klpvl);\
         if (__IDX != GS_HASH_TABLE_INVALID_INDEX) {\
             (__HT)->data[__IDX].state = GS_HASH_TABLE_ENTRY_INACTIVE;\
+            if (gs_dyn_array_head((__HT)->data)->size) gs_dyn_array_head((__HT)->data)->size--;\
         }\
     } while (0)
 
@@ -1957,7 +1994,7 @@ uint32_t __gs_find_first_valid_iterator(void* data, size_t key_len, size_t val_l
 
 /* Find first valid iterator idx */
 #define gs_hash_table_iter_new(__HT)\
-    (__gs_find_first_valid_iterator((__HT)->data, sizeof((__HT)->tmp_key), sizeof((__HT)->tmp_val), 0, (__HT)->stride, (__HT)->klpvl))
+    (__HT ? __gs_find_first_valid_iterator((__HT)->data, sizeof((__HT)->tmp_key), sizeof((__HT)->tmp_val), 0, (__HT)->stride, (__HT)->klpvl) : 0)
 
 #define gs_hash_table_iter_valid(__HT, __IT)\
     ((__IT) < gs_hash_table_capacity((__HT)))
@@ -2176,7 +2213,7 @@ uint32_t gs_slot_array_insert_func(void** indices, void** data, void* val, size_
 typedef uint32_t gs_slot_array_iter;
 
 #define gs_slot_array_iter_valid(__SA, __IT)\
-    gs_slot_array_exists(__SA, __IT)
+    (__SA && gs_slot_array_exists(__SA, __IT))
 
 gs_force_inline
 void _gs_slot_array_iter_advance_func(gs_dyn_array(uint32_t) indices, uint32_t* it)
@@ -2211,7 +2248,7 @@ uint32_t _gs_slot_array_iter_find_first_valid_index(gs_dyn_array(uint32_t) indic
     return GS_SLOT_ARRAY_INVALID_HANDLE;
 }
 
-#define gs_slot_array_iter_new(__SA) (_gs_slot_array_iter_find_first_valid_index((__SA) ? (__SA)->indices : NULL))
+#define gs_slot_array_iter_new(__SA) (_gs_slot_array_iter_find_first_valid_index((__SA) ? (__SA)->indices : 0))
 
 #define gs_slot_array_iter_advance(__SA, __IT)\
     _gs_slot_array_iter_advance_func((__SA) ? (__SA)->indices : NULL, &(__IT))
@@ -2249,7 +2286,7 @@ void** gs_slot_map_init(void** sm)
 // Could return something, I believe?
 #define gs_slot_map_insert(__SM, __SMK, __SMV)\
     do {\
-        gs_slot_map_init(&(__SM));\
+        gs_slot_map_init((void**)&(__SM));\
         uint32_t __H = gs_slot_array_insert((__SM)->sa, ((__SMV)));\
         gs_hash_table_insert((__SM)->ht, (__SMK), __H);\
     } while (0)
@@ -2856,6 +2893,13 @@ gs_vec3_project_onto(gs_vec3 v0, gs_vec3 v1)
     return gs_vec3_scale(v1, dot / len);
 }
 
+gs_inline bool
+gs_vec3_nan(gs_vec3 v)
+{
+    if (v.x != v.x || v.y != v.y || v.z != v.z) return true;
+    return false; 
+}
+
 gs_inline 
 f32 gs_vec3_dist(gs_vec3 a, gs_vec3 b)
 {
@@ -2935,13 +2979,13 @@ gs_vec4_ctor(f32 _x, f32 _y, f32 _z, f32 _w)
 gs_inline gs_vec4
 gs_vec4_add(gs_vec4 v0, gs_vec4 v1) 
 {
-    return gs_vec4_ctor(v0.x + v1.y, v0.y + v1.y, v0.z + v1.z, v0.w + v1.w);
+    return gs_vec4_ctor(v0.x + v1.x, v0.y + v1.y, v0.z + v1.z, v0.w + v1.w);
 }
 
 gs_inline gs_vec4
 gs_vec4_sub(gs_vec4 v0, gs_vec4 v1) 
 {
-    return gs_vec4_ctor(v0.x - v1.y, v0.y - v1.y, v0.z - v1.z, v0.w - v1.w);
+    return gs_vec4_ctor(v0.x - v1.x, v0.y - v1.y, v0.z - v1.z, v0.w - v1.w);
 }
 
 gs_inline gs_vec4
@@ -2959,7 +3003,7 @@ gs_vec4_div(gs_vec4 v0, gs_vec4 v1)
 gs_inline gs_vec4
 gs_vec4_scale(gs_vec4 v, f32 s) 
 {
-    return gs_vec4_ctor(v.x / s, v.y / s, v.z / s, v.w / s);
+    return gs_vec4_ctor(v.x * s, v.y * s, v.z * s, v.w * s);
 }
 
 gs_inline f32
@@ -3161,7 +3205,14 @@ gs_mat3_inverse(gs_mat3 m)
 
 typedef struct gs_mat4
 {
-    f32 elements[16];
+	union {
+		gs_vec4 rows[4];
+        float m[4][4];
+		float elements[16]; 
+        struct {
+            gs_vec4 right, up, dir, position;
+        } v;
+	};
 } gs_mat4;
 
 gs_inline gs_mat4 
@@ -3234,6 +3285,16 @@ void gs_mat4_set_elements(gs_mat4* m, float* elements, uint32_t count)
         m->elements[i] = elements[i];
     }
 }
+
+gs_inline
+gs_mat4 gs_mat4_ortho_norm(const gs_mat4* m)
+{
+    gs_mat4 r = *m;
+    r.v.right = gs_vec4_norm(r.v.right);
+    r.v.up = gs_vec4_norm(r.v.up);
+    r.v.dir = gs_vec4_norm(r.v.dir);
+    return r;
+} 
 
 gs_inline
 gs_mat4 gs_mat4_transpose(gs_mat4 m)
@@ -3541,6 +3602,63 @@ gs_mat4_look_at(gs_vec3 position, gs_vec3 target, gs_vec3 up)
     return m_res;
 }
 
+// Modified from github.com/CedricGuillemet/ImGuizmo/blob/master/ImGuizmo.cpp
+
+gs_inline
+void gs_mat4_decompose(const gs_mat4* m, float* translation, float* rotation, float* scale)
+{
+    gs_mat4 mat = *m;
+
+    scale[0] = gs_vec4_len(mat.v.right);
+    scale[1] = gs_vec4_len(mat.v.up);
+    scale[2] = gs_vec4_len(mat.v.dir); 
+
+    mat = gs_mat4_ortho_norm(&mat);
+
+    rotation[0] = gs_rad2deg(atan2f(mat.m[1][2], mat.m[2][2]));
+    rotation[1] = gs_rad2deg(atan2f(-mat.m[0][2], sqrtf(mat.m[1][2] * mat.m[1][2] + 
+                mat.m[2][2] * mat.m[2][2])));
+    rotation[2] = gs_rad2deg(atan2f(mat.m[0][1], mat.m[0][0]));
+
+    translation[0] = mat.v.position.x;
+    translation[1] = mat.v.position.y;
+    translation[2] = mat.v.position.z;
+}
+
+// Modified from github.com/CedricGuillemet/ImGuizmo/blob/master/ImGuizmo.cpp
+
+gs_inline
+gs_mat4 gs_mat4_recompose(const float* translation, const float* rotation, const float* scale)
+{
+    gs_mat4 mat = gs_mat4_identity();
+
+    gs_vec3 direction_unary[3] = {
+        GS_XAXIS, 
+        GS_YAXIS, 
+        GS_ZAXIS
+    };
+
+    gs_mat4 rot[3] = {gs_mat4_identity(), gs_mat4_identity(), gs_mat4_identity()};
+    for (uint32_t i = 0; i < 3; ++i) {
+        rot[i] = gs_mat4_rotatev(gs_deg2rad(rotation[i]), direction_unary[i]);
+    }
+
+    mat = gs_mat4_mul_list(3, rot[2], rot[1], rot[0]);
+
+    float valid_scale[3] = gs_default_val();
+    for (uint32_t i = 0; i < 3; ++i) {
+        valid_scale[i] = fabsf(scale[i]) < GS_EPSILON ? 0.001f : scale[i];
+    }
+
+    mat.v.right = gs_vec4_scale(mat.v.right, valid_scale[0]);
+    mat.v.up = gs_vec4_scale(mat.v.up, valid_scale[1]);
+    mat.v.dir = gs_vec4_scale(mat.v.dir, valid_scale[2]);
+    mat.v.position = gs_v4(translation[0], translation[1], translation[2], 1.f);
+
+    return mat; 
+}
+
+
 gs_inline
 gs_vec4 gs_mat4_mul_vec4(gs_mat4 m, gs_vec4 v)
 {
@@ -3575,6 +3693,13 @@ typedef struct
 {
     union 
     {
+        struct {
+            union {
+                gs_vec3 xyz;
+                gs_vec3 axis;
+            } axis;
+            float a;
+        } aa;
         gs_vec4 v;
         f32 xyzw[4];
         struct 
@@ -3700,6 +3825,18 @@ gs_inline
 gs_quat gs_quat_inverse(gs_quat q)
 {
     return (gs_quat_scale(gs_quat_conjugate(q), 1.0f / gs_quat_dot(q, q)));
+} 
+
+gs_inline gs_quat gs_quat_angle_axis(f32 rad, gs_vec3 axis)
+{
+    // Normalize axis
+    gs_vec3 a = gs_vec3_norm(axis);
+
+    // Get scalar
+    f32 half_angle = 0.5f * rad;
+    f32 s = (float)sin(half_angle);
+
+    return gs_quat_ctor(a.x * s, a.y * s, a.z * s, (float)cos(half_angle));
 }
 
 gs_inline gs_vec3 gs_quat_rotate(gs_quat q, gs_vec3 v)
@@ -3713,16 +3850,51 @@ gs_inline gs_vec3 gs_quat_rotate(gs_quat q, gs_vec3 v)
     return (gs_vec3_add(v, gs_vec3_add(uv, uuv)));
 }
 
-gs_inline gs_quat gs_quat_angle_axis(f32 rad, gs_vec3 axis)
+gs_inline gs_quat 
+gs_quat_from_to_rotation(gs_vec3 src, gs_vec3 dst)
 {
-    // Normalize axis
-    gs_vec3 a = gs_vec3_norm(axis);
+    src = gs_vec3_norm(src);
+    dst = gs_vec3_norm(dst);
+    const float d = gs_vec3_dot(src, dst);
 
-    // Get scalar
-    f32 half_angle = 0.5f * rad;
-    f32 s = (float)sin(half_angle);
+    if (d  >= 1.f)
+    {
+        return gs_quat_default();
+    }
+    else if (d <= -1.f)
+    {
+        // Orthonormalize, find axis of rotation
+        gs_vec3 axis = gs_vec3_cross(src, GS_XAXIS);
+        if (gs_vec3_len2(axis) < 1e-6)
+        {
+            axis = gs_vec3_cross(src, GS_YAXIS);
+        }
+        return gs_quat_angle_axis((float)GS_PI, gs_vec3_norm(axis));
+    } 
+    else
+    {
+        const float s = sqrtf(gs_vec3_len2(src) * gs_vec3_len2(dst)) + 
+            gs_vec3_dot(src, dst);
 
-    return gs_quat_ctor(a.x * s, a.y * s, a.z * s, (float)cos(half_angle));
+        gs_vec3 axis = gs_vec3_cross(src, dst);
+
+        return gs_quat_norm(gs_quat_ctor(axis.x, axis.y, axis.z, s));
+    }
+}
+
+gs_inline 
+gs_quat gs_quat_look_rotation(gs_vec3 forward, gs_vec3 up)
+{ 
+    const gs_quat q0 = gs_quat_from_to_rotation(GS_ZAXIS, forward);
+    if (gs_vec3_len2(gs_vec3_cross(forward, up)) < 1e-6)
+    {
+        return q0;
+    } 
+
+    const gs_vec3 new_up = gs_quat_rotate(q0, up);
+    const gs_quat q1 = gs_quat_from_to_rotation(new_up, up);
+
+    return gs_quat_mul(q1, q0);
 }
 
 gs_inline
@@ -3862,9 +4034,12 @@ gs_vec3 gs_quat_to_euler(gs_quat* q)
 
 typedef struct 
 {
-    gs_vec3     position;
-    gs_quat     rotation;
-    gs_vec3     scale;      
+    union {
+        gs_vec3 position;
+        gs_vec3 translation;
+    };
+    gs_quat rotation;
+    gs_vec3 scale;      
 } gs_vqs;
 
 gs_inline gs_vqs gs_vqs_ctor(gs_vec3 tns, gs_quat rot, gs_vec3 scl)
@@ -3947,6 +4122,58 @@ gs_inline gs_mat4 gs_vqs_to_mat4(const gs_vqs* transform)
     return mat;
 }
 
+gs_inline gs_vqs gs_vqs_from_mat4(const gs_mat4* m)
+{
+    gs_vec3 translation = gs_v3s(0.f), rotation = gs_v3s(0.f), scale = gs_v3s(1.f);
+    gs_mat4_decompose(m, (float*)&translation, (float*)&rotation, (float*)&scale);
+    return gs_vqs_ctor(
+        translation, 
+        gs_quat_from_euler(rotation.x, rotation.y, rotation.z),
+        scale
+    );
+}
+
+/*================================================================================
+// Random
+================================================================================*/
+
+// From: https://github.com/ESultanik/mtwister
+
+#define GS_STATE_VECTOR_LENGTH 624
+#define GS_STATE_VECTOR_M      397 /* changes to STATE_VECTOR_LENGTH also require changes to this */
+
+typedef struct gs_mt_rand_t 
+{
+  uint64_t mt[GS_STATE_VECTOR_LENGTH];
+  int32_t index;
+} gs_mt_rand_t;
+
+GS_API_DECL gs_mt_rand_t gs_rand_seed(uint64_t seed);
+GS_API_DECL uint64_t gs_rand_gen_long(gs_mt_rand_t* rand);
+GS_API_DECL double gs_rand_gen(gs_mt_rand_t* rand);
+GS_API_DECL double gs_rand_gen_range(gs_mt_rand_t* rand, double min, double max);
+GS_API_DECL uint64_t gs_rand_gen_range_long(gs_mt_rand_t* rand, int32_t min, int32_t max);
+
+#ifndef GS_NO_SHORT_NAME
+    typedef gs_mt_rand_t    gs_rand;
+#endif 
+
+/*================================================================================
+// Noise
+================================================================================*/
+
+// Perlin noise
+GS_API_DECL float gs_perlin1(float x);
+GS_API_DECL float gs_perlin2(float x, float y);
+GS_API_DECL float gs_perlin3(float x, float y, float z);
+GS_API_DECL float gs_perlin4(float x, float y, float z, float w);
+
+// Perlin periodic noise
+GS_API_DECL float gs_perlin1p(float x, int32_t px);
+GS_API_DECL float gs_perlin2p(float x, float y, int32_t px, int32_t py);
+GS_API_DECL float gs_perlin3p(float x, float y, float z, int32_t px, int32_t py, int32_t pz);
+GS_API_DECL float gs_perlin4p(float x, float y, float z, float w, int32_t px, int32_t py, int32_t pz, int32_t pw);
+
 /*================================================================================
 // Camera
 ================================================================================*/
@@ -3970,16 +4197,17 @@ typedef struct gs_camera_t
 
 GS_API_DECL gs_camera_t gs_camera_default();
 GS_API_DECL gs_camera_t gs_camera_perspective();
-GS_API_DECL gs_mat4 gs_camera_get_view(gs_camera_t* cam);
-GS_API_DECL gs_mat4 gs_camera_get_proj(gs_camera_t* cam, int32_t view_width, int32_t view_height);
-GS_API_DECL gs_mat4 gs_camera_get_view_projection(gs_camera_t* cam, int32_t view_width, int32_t view_height);
-GS_API_DECL gs_vec3 gs_camera_forward(gs_camera_t* cam);
-GS_API_DECL gs_vec3 gs_camera_backward(gs_camera_t* cam);
-GS_API_DECL gs_vec3 gs_camera_up(gs_camera_t* cam);
-GS_API_DECL gs_vec3 gs_camera_down(gs_camera_t* cam);
-GS_API_DECL gs_vec3 gs_camera_right(gs_camera_t* cam);
-GS_API_DECL gs_vec3 gs_camera_left(gs_camera_t* cam);
-GS_API_DECL gs_vec3 gs_camera_screen_to_world(gs_camera_t* cam, gs_vec3 coords, int32_t view_width, int32_t view_height);
+GS_API_DECL gs_mat4 gs_camera_get_view(const gs_camera_t* cam);
+GS_API_DECL gs_mat4 gs_camera_get_proj(const gs_camera_t* cam, int32_t view_width, int32_t view_height);
+GS_API_DECL gs_mat4 gs_camera_get_view_projection(const gs_camera_t* cam, int32_t view_width, int32_t view_height);
+GS_API_DECL gs_vec3 gs_camera_forward(const gs_camera_t* cam);
+GS_API_DECL gs_vec3 gs_camera_backward(const gs_camera_t* cam);
+GS_API_DECL gs_vec3 gs_camera_up(const gs_camera_t* cam);
+GS_API_DECL gs_vec3 gs_camera_down(const gs_camera_t* cam);
+GS_API_DECL gs_vec3 gs_camera_right(const gs_camera_t* cam);
+GS_API_DECL gs_vec3 gs_camera_left(const gs_camera_t* cam);
+GS_API_DECL gs_vec3 gs_camera_screen_to_world(const gs_camera_t* cam, gs_vec3 coords, int32_t view_x, int32_t view_y, int32_t view_width, int32_t view_height);
+GS_API_DECL gs_vec3 gs_camera_world_to_screen(const gs_camera_t* cam, gs_vec3 coords, int32_t view_width, int32_t view_height);
 GS_API_DECL void gs_camera_offset_orientation(gs_camera_t* cam, float yaw, float picth);
 
 /*================================================================================
@@ -4078,6 +4306,98 @@ gs_vec4 gs_aabb_window_coords(gs_aabb_t* aabb, gs_camera_t* camera, gs_vec2 wind
 */
 
 /** @} */ // end of gs_math
+
+/*========================
+// GS_LEXER
+========================*/
+
+//==== [ Token ] ============================================================//
+
+typedef enum gs_token_type
+{
+	GS_TOKEN_UNKNOWN = 0x00,
+	GS_TOKEN_LPAREN,
+	GS_TOKEN_RPAREN,
+	GS_TOKEN_LTHAN, 
+	GS_TOKEN_GTHAN, 
+	GS_TOKEN_SEMI_COLON,
+	GS_TOKEN_COLON,
+	GS_TOKEN_COMMA, 
+	GS_TOKEN_EQUAL,
+	GS_TOKEN_NOT, 
+	GS_TOKEN_HASH, 
+	GS_TOKEN_PIPE, 
+	GS_TOKEN_AMPERSAND, 
+	GS_TOKEN_LBRACE, 
+	GS_TOKEN_RBRACE, 
+	GS_TOKEN_LBRACKET, 
+	GS_TOKEN_RBRACKET, 
+	GS_TOKEN_MINUS, 
+	GS_TOKEN_PLUS, 
+	GS_TOKEN_ASTERISK, 
+	GS_TOKEN_BSLASH, 
+	GS_TOKEN_FSLASH, 
+	GS_TOKEN_QMARK, 
+	GS_TOKEN_SPACE, 
+    GS_TOKEN_PERCENT,
+	GS_TOKEN_NEWLINE, 
+	GS_TOKEN_TAB, 
+	GS_TOKEN_UNDERSCORE,
+	GS_TOKEN_SINGLE_LINE_COMMENT, 
+	GS_TOKEN_MULTI_LINE_COMMENT, 
+	GS_TOKEN_IDENTIFIER, 
+	GS_TOKEN_SINGLE_QUOTE,
+	GS_TOKEN_DOUBLE_QUOTE,
+	GS_TOKEN_STRING, 
+	GS_TOKEN_NUMBER
+} gs_token_type;
+
+typedef struct gs_token_t 
+{
+	const char* text;
+	gs_token_type type;
+	uint32_t len;
+} gs_token_t;
+
+GS_API_DECL gs_token_t gs_token_invalid_token();
+GS_API_DECL bool gs_token_compare_type(const gs_token_t* t, gs_token_type type);
+GS_API_DECL bool gs_token_compare_text(const gs_token_t* t, const char* match);
+GS_API_DECL void gs_token_print_text(const gs_token_t* t);
+GS_API_DECL void gs_token_debug_print(const gs_token_t* t);
+GS_API_DECL const char* gs_token_type_to_str(gs_token_type type);
+GS_API_DECL bool gs_char_is_end_of_line(char c);
+GS_API_DECL bool gs_char_is_white_space(char c);
+GS_API_DECL bool gs_char_is_alpha(char c);
+GS_API_DECL bool gs_char_is_numeric(char c);
+
+//==== [ Lexer ] ============================================================//
+
+typedef struct gs_lexer_t
+{
+	const char* at;
+	const char* contents;
+	gs_token_t current_token;
+	bool (* can_lex)(struct gs_lexer_t* lex);
+	void (* eat_white_space)(struct gs_lexer_t* lex);
+	gs_token_t (* next_token)(struct gs_lexer_t*);
+} gs_lexer_t;
+
+GS_API_DECL void gs_lexer_set_contents(gs_lexer_t* lex, const char* contents);
+GS_API_DECL gs_token_t gs_lexer_next_token(gs_lexer_t* lex);
+GS_API_DECL bool gs_lexer_can_lex(gs_lexer_t* lex);
+GS_API_DECL gs_token_t gs_lexer_current_token(const gs_lexer_t* lex);
+GS_API_DECL bool gs_lexer_require_token_text(gs_lexer_t* lex, const char* match);
+GS_API_DECL bool gs_lexer_require_token_type(gs_lexer_t* lex, gs_token_type type);
+GS_API_DECL bool gs_lexer_current_token_compare_type(const gs_lexer_t* lex, gs_token_type type);
+GS_API_DECL gs_token_t gs_lexer_peek(gs_lexer_t* lex);
+GS_API_DECL bool gs_lexer_find_next_token_type(gs_lexer_t* lex, gs_token_type type);
+GS_API_DECL gs_token_t gs_lexer_advance_before_next_token_type(gs_lexer_t* lex, gs_token_type type);
+
+// C specific functions for lexing
+GS_API_DECL gs_lexer_t gs_lexer_c_ctor(const char* contents);
+GS_API_DECL bool gs_lexer_c_can_lex(gs_lexer_t* lex);
+GS_API_DECL void gs_lexer_c_eat_white_space(gs_lexer_t* lex);
+GS_API_DECL gs_token_t gs_lexer_c_next_token(gs_lexer_t* lex);
 
 /*========================
 // GS_PLATFORM
@@ -4359,7 +4679,7 @@ typedef struct gs_opengl_video_settings_t
 typedef union gs_graphics_api_settings_t
 {
     gs_opengl_video_settings_t opengl;
-    int32_t                    dummy;   
+    bool32                     debug;
 } gs_graphics_api_settings_t;
 
 typedef struct gs_platform_video_settings_t
@@ -4378,6 +4698,7 @@ typedef enum gs_platform_event_type
 {
     GS_PLATFORM_EVENT_MOUSE,
     GS_PLATFORM_EVENT_KEY,
+    GS_PLATFORM_EVENT_TEXT,
     GS_PLATFORM_EVENT_WINDOW,
     GS_PLATFORM_EVENT_TOUCH,
     GS_PLATFORM_EVENT_APP
@@ -4443,6 +4764,11 @@ typedef struct gs_platform_window_event_t
     gs_platform_window_action_type action;
 } gs_platform_window_event_t;
 
+typedef struct gs_platform_text_event_t
+{
+    uint32_t codepoint;
+} gs_platform_text_event_t;
+
 typedef enum gs_platform_touch_action_type
 {
     GS_PLATFORM_TOUCH_DOWN,
@@ -4486,6 +4812,7 @@ typedef struct gs_platform_event_t
         gs_platform_window_event_t  window;
         gs_platform_touch_event_t   touch;
         gs_platform_app_event_t     app;
+        gs_platform_text_event_t    text;
     };
     uint32_t idx;
 } gs_platform_event_t;
@@ -4494,19 +4821,7 @@ typedef struct gs_platform_event_t
 typedef void (* gs_dropped_files_callback_t)(void*, int32_t count, const char** file_paths);
 typedef void (* gs_window_close_callback_t)(void*);
 typedef void (* gs_character_callback_t)(void*, uint32_t code_point);
-
-// Directory
-
-#define GS_PLATFORM_DIR_MAX_STR_SZ 			1024
-
-typedef struct gs_platform_dir_iter_t
-{
-	char root_path[GS_PLATFORM_DIR_MAX_STR_SZ]; // Root starting path of current iterator
-	char path[GS_PLATFORM_DIR_MAX_STR_SZ]; 		// Path of current iterator
-	bool32 is_dir;								// If iterator is a directory
-	bool32 is_recursive;						// If iterator is recursive
-	void* hndl;									// Platform necessary handle for internal data
-} gs_platform_dir_iter_t;
+typedef void (* gs_framebuffer_resize_callback_t)(void*, int32_t width, int32_t height);
 
 /*===============================================================================================
 // Platform Interface
@@ -4558,10 +4873,6 @@ GS_API_DECL gs_uuid_t gs_platform_uuid_generate();
 GS_API_DECL void      gs_platform_uuid_to_string(char* temp_buffer, const gs_uuid_t* uuid); // Expects a temp buffer with at least 32 bytes
 GS_API_DECL uint32_t  gs_platform_uuid_hash(const gs_uuid_t* uuid);
 
-// Platform Directory
-GS_API_DECL gs_platform_dir_iter_t gs_platform_dir_iter_create(const char* path, bool32 recursive);
-GS_API_DECL bool32 gs_platform_dir_iter_valid(gs_platform_dir_iter_t* iter);
-
 // Platform Input
 GS_API_DECL void      gs_platform_update_input(gs_platform_input_t* input);
 GS_API_DECL void      gs_platform_press_key(gs_platform_keycode code);
@@ -4588,6 +4899,7 @@ GS_API_DECL void      gs_platform_mouse_delta(float* x, float* y);
 GS_API_DECL gs_vec2   gs_platform_mouse_positionv();
 GS_API_DECL void      gs_platform_mouse_position(int32_t* x, int32_t* y);
 GS_API_DECL void      gs_platform_mouse_wheel(float* x, float* y);
+GS_API_DECL gs_vec2   gs_platform_mouse_wheelv();
 GS_API_DECL bool      gs_platform_mouse_moved();
 GS_API_DECL bool      gs_platform_mouse_locked();
 GS_API_DECL gs_vec2   gs_platform_touch_deltav(uint32_t idx);
@@ -4600,13 +4912,15 @@ GS_API_DECL bool      gs_platform_poll_events(gs_platform_event_t* evt, bool32_t
 GS_API_DECL void      gs_platform_add_event(gs_platform_event_t* evt);
 
 // Platform Window
-GS_API_DECL uint32_t gs_platform_create_window(const char* title, uint32_t width, uint32_t height);
+GS_API_DECL uint32_t gs_platform_create_window(const char* title, uint32_t width, uint32_t height, uint32_t monitor_index);
 GS_API_DECL uint32_t gs_platform_main_window();
 
 // Platform File IO (this all needs to be made available for impl rewrites)
 GS_API_DECL char*      gs_platform_read_file_contents_default_impl(const char* file_path, const char* mode, size_t* sz);
 GS_API_DECL gs_result  gs_platform_write_file_contents_default_impl(const char* file_path, const char* mode, void* data, size_t data_size);
 GS_API_DECL bool       gs_platform_file_exists_default_impl(const char* file_path);
+GS_API_DECL bool       gs_platform_dir_exists_default_impl(const char* dir_path);
+GS_API_DECL int32_t    gs_platform_mkdir_default_impl(const char* dir_path, int32_t opt);
 GS_API_DECL int32_t    gs_platform_file_size_in_bytes_default_impl(const char* file_path);
 GS_API_DECL void       gs_platform_file_extension_default_impl(char* buffer, size_t buffer_sz, const char* file_path);
 
@@ -4619,6 +4933,12 @@ GS_API_DECL void       gs_platform_file_extension_default_impl(char* buffer, siz
 #endif
 #ifndef gs_platform_file_exists
 #define gs_platform_file_exists gs_platform_file_exists_default_impl
+#endif
+#ifndef gs_platform_dir_exists
+#define gs_platform_dir_exists gs_platform_dir_exists_default_impl
+#endif
+#ifndef gs_platform_mkdir
+#define gs_platform_mkdir gs_platform_mkdir_default_impl
 #endif
 #ifndef gs_platform_file_exists
 #define gs_platform_file_exists gs_platform_file_exists_default_impl
@@ -4649,23 +4969,32 @@ GS_API_DECL gs_platform_keycode  gs_platform_codepoint_to_key(uint32_t code);
 GS_API_DECL void                 gs_platform_mouse_set_position(uint32_t handle, float x, float y);
 GS_API_DECL void                 gs_platform_lock_mouse(uint32_t handle, bool32_t lock);
 
-GS_API_DECL void*    gs_platform_create_window_internal(const char* title, uint32_t width, uint32_t height);
+GS_API_DECL void*    gs_platform_create_window_internal(const char* title, uint32_t width, uint32_t height, uint32_t monitor_index);
 GS_API_DECL void     gs_platform_window_swap_buffer(uint32_t handle);
 GS_API_DECL gs_vec2  gs_platform_window_sizev(uint32_t handle);
 GS_API_DECL void     gs_platform_window_size(uint32_t handle, uint32_t* width, uint32_t* height);
 GS_API_DECL uint32_t gs_platform_window_width(uint32_t handle);
 GS_API_DECL uint32_t gs_platform_window_height(uint32_t handle);
+GS_API_DECL bool32_t gs_platform_window_fullscreen(uint32_t handle);
+GS_API_DECL gs_vec2  gs_platform_window_positionv(uint32_t handle);
+GS_API_DECL void     gs_platform_window_position(uint32_t handle, uint32_t* x, uint32_t* y);
 GS_API_DECL void     gs_platform_set_window_size(uint32_t handle, uint32_t width, uint32_t height);
 GS_API_DECL void     gs_platform_set_window_sizev(uint32_t handle, gs_vec2 v);
+GS_API_DECL void     gs_platform_set_window_fullscreen(uint32_t handle, bool32_t fullscreen);
+GS_API_DECL void     gs_platform_set_window_position(uint32_t handle, uint32_t x, uint32_t y);
+GS_API_DECL void     gs_platform_set_window_positionv(uint32_t handle, gs_vec2 v);
 GS_API_DECL void     gs_platform_set_cursor(uint32_t handle, gs_platform_cursor cursor);
-GS_API_DECL void     gs_platform_set_dropped_files_callback(uint32_t handle, gs_dropped_files_callback_t cb);
-GS_API_DECL void     gs_platform_set_window_close_callback(uint32_t handle, gs_window_close_callback_t cb);
-GS_API_DECL void     gs_platform_set_character_callback(uint32_t handle, gs_character_callback_t cb);
 GS_API_DECL void*    gs_platform_raw_window_handle(uint32_t handle);
 GS_API_DECL gs_vec2  gs_platform_framebuffer_sizev(uint32_t handle);
 GS_API_DECL void     gs_platform_framebuffer_size(uint32_t handle, uint32_t* w, uint32_t* h);
 GS_API_DECL uint32_t gs_platform_framebuffer_width(uint32_t handle);
 GS_API_DECL uint32_t gs_platform_framebuffer_height(uint32_t handle);
+
+// Platform callbacks
+GS_API_DECL void     gs_platform_set_framebuffer_resize_callback(uint32_t handle, gs_framebuffer_resize_callback_t cb);
+GS_API_DECL void     gs_platform_set_dropped_files_callback(uint32_t handle, gs_dropped_files_callback_t cb);
+GS_API_DECL void     gs_platform_set_window_close_callback(uint32_t handle, gs_window_close_callback_t cb);
+GS_API_DECL void     gs_platform_set_character_callback(uint32_t handle, gs_character_callback_t cb);
 
 /** @} */ // end of gs_platform
 
@@ -4713,34 +5042,33 @@ typedef struct gs_audio_instance_decl_t
 typedef gs_audio_instance_decl_t gs_audio_instance_t;
 gs_handle_decl(gs_audio_instance_t);
 
+typedef void (* gs_audio_commit)(int16_t* output, uint32_t num_channels, uint32_t sample_rate, uint32_t frame_count);
+
 /*=============================
 // Audio Interface
 =============================*/
 
 typedef struct gs_audio_t
 {
-    /* Audio source data cache */
+    // Audio source data cache
     gs_slot_array(gs_audio_source_t) sources;
 
-    /* Audio instance data cache */
+    // Audio instance data cache
     gs_slot_array(gs_audio_instance_t) instances;
 
-    /* Max global volume setting */
+    // Max global volume setting
     float max_audio_volume;
 
-    /* Min global volume setting */
+    // Min global volume setting
     float min_audio_volume;
 
-    /* Samples to actually write to hardware */
-    void* sample_out;
+    // Samples to actually write to hardware
+    void* sample_out; 
 
-    /* Amount of samples to write */
-    uint32_t sample_count_to_output;    
+    // Custom user commit function
+    gs_audio_commit commit;
 
-    /* Samples per second for hardware */
-    uint32_t samples_per_second;
-
-    /* User data for custom impl */
+    // User data for custom impl
     void* user_data;
 } gs_audio_t;
 
@@ -4753,6 +5081,9 @@ GS_API_DECL gs_audio_t* gs_audio_create();
 GS_API_DECL void        gs_audio_destroy(gs_audio_t* audio);
 GS_API_DECL gs_result   gs_audio_init(gs_audio_t* audio);
 GS_API_DECL gs_result   gs_audio_shutdown(gs_audio_t* audio);
+
+// Register commit function
+GS_API_DECL void gs_audio_register_commit(gs_audio_commit commit);
 
 /* Audio create source */
 GS_API_DECL gs_handle(gs_audio_source_t) gs_audio_load_from_file(const char* file_path);
@@ -4855,15 +5186,6 @@ gs_enum_decl(gs_graphics_shader_stage_type,
     GS_GRAPHICS_SHADER_STAGE_COMPUTE
 );
 
-/* Blend Equation Type */
-gs_enum_decl(gs_graphics_blend_equation_type,
-    GS_GRAPHICS_BLEND_EQUATION_ADD,
-    GS_GRAPHICS_BLEND_EQUATION_SUBTRACT,
-    GS_GRAPHICS_BLEND_EQUATION_REVERSE_SUBTRACT,
-    GS_GRAPHICS_BLEND_EQUATION_MIN,
-    GS_GRAPHICS_BLEND_EQUATION_MAX
-);
-
 /* Winding Order Type */
 gs_enum_decl(gs_graphics_winding_order_type,
     GS_GRAPHICS_WINDING_ORDER_CW,
@@ -4876,6 +5198,15 @@ gs_enum_decl(gs_graphics_face_culling_type,
     GS_GRAPHICS_FACE_CULLING_BACK,
     GS_GRAPHICS_FACE_CULLING_FRONT_AND_BACK
 );
+
+/* Blend Equation Type */
+gs_enum_decl(gs_graphics_blend_equation_type,
+    GS_GRAPHICS_BLEND_EQUATION_ADD,
+    GS_GRAPHICS_BLEND_EQUATION_SUBTRACT,
+    GS_GRAPHICS_BLEND_EQUATION_REVERSE_SUBTRACT,
+    GS_GRAPHICS_BLEND_EQUATION_MIN,
+    GS_GRAPHICS_BLEND_EQUATION_MAX
+); 
 
 /* Blend Mode Type */
 gs_enum_decl(gs_graphics_blend_mode_type,
@@ -4912,6 +5243,7 @@ gs_enum_decl(gs_graphics_uniform_type,
     GS_GRAPHICS_UNIFORM_VEC4,
     GS_GRAPHICS_UNIFORM_MAT4,
     GS_GRAPHICS_UNIFORM_SAMPLER2D,
+    GS_GRAPHICS_UNIFORM_IMAGE2D_RGBA32F,
     GS_GRAPHICS_UNIFORM_BLOCK
 );
 
@@ -4972,6 +5304,12 @@ gs_enum_decl(gs_graphics_buffer_update_type,
     GS_GRAPHICS_BUFFER_UPDATE_SUBDATA
 );
 
+gs_enum_decl(gs_graphics_access_type,
+    GS_GRAPHICS_ACCESS_READ_ONLY,
+    GS_GRAPHICS_ACCESS_WRITE_ONLY,
+    GS_GRAPHICS_ACCESS_READ_WRITE
+);
+
 /* Texture Format */
 gs_enum_decl(gs_graphics_texture_format_type,
     GS_GRAPHICS_TEXTURE_FORMAT_RGBA8,
@@ -5021,8 +5359,9 @@ gs_enum_decl(gs_graphics_bind_type,
     GS_GRAPHICS_BIND_VERTEX_BUFFER,
     GS_GRAPHICS_BIND_INDEX_BUFFER,
     GS_GRAPHICS_BIND_UNIFORM_BUFFER,
-    GS_GRAPHICS_BIND_UNIFORM,
-    GS_GRAPHICS_BIND_IMAGE_BUFFER
+    GS_GRAPHICS_BIND_STORAGE_BUFFER,
+    GS_GRAPHICS_BIND_IMAGE_BUFFER,
+    GS_GRAPHICS_BIND_UNIFORM
 );
 
 /* Depth Function Type */
@@ -5067,6 +5406,7 @@ gs_handle_decl(gs_graphics_texture_t);
 gs_handle_decl(gs_graphics_vertex_buffer_t);
 gs_handle_decl(gs_graphics_index_buffer_t);
 gs_handle_decl(gs_graphics_uniform_buffer_t);
+gs_handle_decl(gs_graphics_storage_buffer_t);
 gs_handle_decl(gs_graphics_framebuffer_t);
 gs_handle_decl(gs_graphics_uniform_t);
 gs_handle_decl(gs_graphics_render_pass_t);
@@ -5084,7 +5424,7 @@ typedef struct gs_graphics_shader_desc_t
 {
     gs_graphics_shader_source_desc_t* sources;  // Array of shader source descriptions
     size_t size;                    // Size in bytes of shader source desc array
-    const char* name;               // Optional (for logging and debugging mainly)
+    char name[64];               // Optional (for logging and debugging mainly)
 } gs_graphics_shader_desc_t;
 
 /* Graphics Texture Desc */
@@ -5101,13 +5441,21 @@ typedef struct gs_graphics_texture_desc_t
     uint32_t num_mips;                              // Number of mips to generate (default 0 is disable mip generation)
     void* data;                                     // Texture data to upload (can be null)
     b32 render_target;                              // Default to false (not a render target)
+    gs_vec2 offset;                                 // Offset for updates
+    struct {
+        uint32_t x;         // X offset in pixels to start read
+        uint32_t y;         // Y offset in pixels to start read
+        uint32_t width;     // Width in pixels for texture
+        uint32_t height;    // Height in pixels for texture
+        size_t size;        // Size in bytes for data to be read
+    } read;
 } gs_graphics_texture_desc_t;
 
 /* Graphics Uniform Layout Desc */
 typedef struct gs_graphics_uniform_layout_desc_t
 {
     gs_graphics_uniform_type type;                  // Type of field
-    const char* fname;                              // Name of field (required for implicit APIs, like OpenGL/ES)
+    char fname[64];                              // Name of field (required for implicit APIs, like OpenGL/ES)
     uint32_t count;                                 // Count variable (used for arrays such as glUniformXXXv)
 } gs_graphics_uniform_layout_desc_t;
 
@@ -5115,7 +5463,7 @@ typedef struct gs_graphics_uniform_layout_desc_t
 typedef struct gs_graphics_uniform_desc_t
 {
     gs_graphics_shader_stage_type stage;
-    const char* name;                               // Name of uniform (required for OpenGL/ES, WebGL)
+    char name[64];                               // Name of uniform (required for OpenGL/ES, WebGL)
     gs_graphics_uniform_layout_desc_t* layout;      // Layout array for uniform data
     size_t layout_size;                             // Size of uniform data in bytes
 } gs_graphics_uniform_desc_t;
@@ -5153,6 +5501,16 @@ typedef struct gs_graphics_uniform_buffer_desc_t
     gs_graphics_shader_stage_type stage;
     gs_graphics_buffer_update_desc_t update;
 } gs_graphics_uniform_buffer_desc_t;
+
+typedef struct gs_graphics_storage_buffer_desc_t
+{
+    void* data;
+    size_t size;
+    char name[64];                               
+    gs_graphics_buffer_usage_type usage;
+    gs_graphics_access_type access;
+    gs_graphics_buffer_update_desc_t update;
+} gs_graphics_storage_buffer_desc_t;
 
 typedef struct gs_graphics_framebuffer_desc_t 
 {
@@ -5198,13 +5556,6 @@ typedef enum gs_graphics_vertex_data_type
     GS_GRAPHICS_VERTEX_DATA_NONINTERLEAVED
 } gs_graphics_vertex_data_type;
 
-typedef enum gs_graphics_access_type
-{
-    GS_GRAPHICS_ACCESS_READ_ONLY = 0x00,
-    GS_GRAPHICS_ACCESS_WRITE_ONLY,
-    GS_GRAPHICS_ACCESS_READ_WRITE,
-} gs_graphics_access_type;
-
 typedef struct gs_graphics_bind_vertex_buffer_desc_t {
     gs_handle(gs_graphics_vertex_buffer_t) buffer;
     size_t offset;
@@ -5227,8 +5578,13 @@ typedef struct gs_graphics_bind_uniform_buffer_desc_t {
     struct {
         size_t offset;      // Specify an offset for ranged binds.
         size_t size;        // Specify size for ranged binds.
-    } range;
+    } range; 
 } gs_graphics_bind_uniform_buffer_desc_t;
+
+typedef struct gs_graphics_bind_storage_buffer_desc_t {
+    gs_handle(gs_graphics_storage_buffer_t) buffer;
+    uint32_t binding;
+} gs_graphics_bind_storage_buffer_desc_t;
 
 typedef struct gs_graphics_bind_uniform_desc_t {
     gs_handle(gs_graphics_uniform_t) uniform;
@@ -5263,6 +5619,12 @@ typedef struct gs_graphics_bind_desc_t
         gs_graphics_bind_image_buffer_desc_t* desc;
         size_t size;
     } image_buffers;
+
+    struct {
+        gs_graphics_bind_storage_buffer_desc_t* desc;
+        size_t size;
+    } storage_buffers;
+
 } gs_graphics_bind_desc_t;
 
 /* Graphics Blend State Desc */
@@ -5309,7 +5671,7 @@ typedef struct gs_graphics_compute_state_desc_t
 
 /* Graphics Vertex Attribute Desc */
 typedef struct gs_graphics_vertex_attribute_desc_t {
-    const char* name;                                   // Attribute name (required for lower versions of OpenGL and ES)
+    char name[64];                                   // Attribute name (required for lower versions of OpenGL and ES)
     gs_graphics_vertex_attribute_type format;           // Format for vertex attribute
     size_t stride;                                      // Total stride of vertex layout (optional, calculated by default)
     size_t offset;                                      // Offset of this vertex from base pointer of data (optional, calaculated by default)
@@ -5361,6 +5723,7 @@ typedef struct gs_graphics_info_t
 {
     uint32_t major_version;
     uint32_t minor_version;
+    uint32_t max_texture_units;
     struct {
         bool32 available;
         uint32_t max_work_group_count[3];
@@ -5383,39 +5746,63 @@ typedef struct gs_graphics_t
 // Graphics API
 ==========================*/
 
-/* Graphics Interface Creation / Initialization / Shutdown / Destruction */
+// Graphics Interface Creation / Initialization / Shutdown / Destruction
 GS_API_DECL gs_graphics_t* gs_graphics_create();
 GS_API_DECL void           gs_graphics_destroy(gs_graphics_t* graphics);
 GS_API_DECL void           gs_graphics_init(gs_graphics_t* graphics);
 GS_API_DECL void           gs_graphics_shutdown(gs_graphics_t* graphics);
 
-/* Graphics Info Object Query */
+// Graphics Info Object Query
 GS_API_DECL                gs_graphics_info_t* gs_graphics_info();
 
-/* Resource Creation */
+// Resource Creation
 GS_API_DECL gs_handle(gs_graphics_texture_t)        gs_graphics_texture_create(const gs_graphics_texture_desc_t* desc);
 GS_API_DECL gs_handle(gs_graphics_uniform_t)        gs_graphics_uniform_create(const gs_graphics_uniform_desc_t* desc);
 GS_API_DECL gs_handle(gs_graphics_shader_t)         gs_graphics_shader_create(const gs_graphics_shader_desc_t* desc);
 GS_API_DECL gs_handle(gs_graphics_vertex_buffer_t)  gs_graphics_vertex_buffer_create(const gs_graphics_vertex_buffer_desc_t* desc);
 GS_API_DECL gs_handle(gs_graphics_index_buffer_t)   gs_graphics_index_buffer_create(const gs_graphics_index_buffer_desc_t* desc);
 GS_API_DECL gs_handle(gs_graphics_uniform_buffer_t) gs_graphics_uniform_buffer_create(const gs_graphics_uniform_buffer_desc_t* desc);
+GS_API_DECL gs_handle(gs_graphics_storage_buffer_t) gs_graphics_storage_buffer_create(const gs_graphics_storage_buffer_desc_t* desc);
 GS_API_DECL gs_handle(gs_graphics_framebuffer_t)    gs_graphics_framebuffer_create(const gs_graphics_framebuffer_desc_t* desc);
 GS_API_DECL gs_handle(gs_graphics_render_pass_t)    gs_graphics_render_pass_create(const gs_graphics_render_pass_desc_t* desc);
 GS_API_DECL gs_handle(gs_graphics_pipeline_t)       gs_graphics_pipeline_create(const gs_graphics_pipeline_desc_t* desc);
 
-/* Resource Destruction */
+// Resource Destruction
+GS_API_DECL void gs_graphics_texture_destroy(gs_handle(gs_graphics_texture_t) hndl);
+GS_API_DECL void gs_graphics_uniform_destroy(gs_handle(gs_graphics_uniform_t) hndl);
+GS_API_DECL void gs_graphics_shader_destroy(gs_handle(gs_graphics_shader_t) hndl);
+GS_API_DECL void gs_graphics_vertex_buffer_destroy(gs_handle(gs_graphics_vertex_buffer_t) hndl);
+GS_API_DECL void gs_graphics_index_buffer_destroy(gs_handle(gs_graphics_index_buffer_t) hndl);
+GS_API_DECL void gs_graphics_uniform_buffer_destroy(gs_handle(gs_graphics_uniform_buffer_t) hndl);
+GS_API_DECL void gs_graphics_storage_buffer_destroy(gs_handle(gs_graphics_storage_buffer_t) hndl);
+GS_API_DECL void gs_graphics_framebuffer_destroy(gs_handle(gs_graphics_framebuffer_t) hndl);
+GS_API_DECL void gs_graphics_render_pass_destroy(gs_handle(gs_graphics_render_pass_t) hndl);
+GS_API_DECL void gs_graphics_pipeline_destroy(gs_handle(gs_graphics_pipeline_t) hndl); 
+
+// Resource Queries
+GS_API_DECL void gs_graphics_pipeline_desc_query(gs_handle(gs_graphics_pipeline_t) hndl, gs_graphics_pipeline_desc_t* out);
+GS_API_DECL void gs_graphics_texture_desc_query(gs_handle(gs_graphics_texture_t) hndl, gs_graphics_texture_desc_t* out);
+
+// Resource Updates (main thread only) 
+GS_API_DECL void gs_graphics_vertex_buffer_update(gs_handle(gs_graphics_vertex_buffer_t) hndl, gs_graphics_vertex_buffer_desc_t* desc); 
+GS_API_DECL void gs_graphics_index_buffer_update(gs_handle(gs_graphics_index_buffer_t) hndl, gs_graphics_index_buffer_desc_t* desc);
+GS_API_DECL void gs_graphics_storage_buffer_update(gs_handle(gs_graphics_storage_buffer_t) hndl, gs_graphics_storage_buffer_desc_t* desc);
+GS_API_DECL void gs_graphics_texture_update(gs_handle(gs_graphics_texture_t) hndl, gs_graphics_texture_desc_t* desc);
+
+// Resource Destruction
 GS_API_DECL void gs_graphics_texture_destroy(gs_handle(gs_graphics_texture_t) hndl);
 GS_API_DECL void gs_graphics_shader_destroy(gs_handle(gs_graphics_shader_t) hndl);
 GS_API_DECL void gs_graphics_render_pass_destroy(gs_handle(gs_graphics_render_pass_t) hndl);
 GS_API_DECL void gs_graphics_pipeline_destroy(gs_handle(gs_graphics_pipeline_t) hndl);
 
-/* Resource In-Flight Update*/
+// Resource In-Flight Update
 GS_API_DECL void gs_graphics_texture_request_update(gs_command_buffer_t* cb, gs_handle(gs_graphics_texture_t) hndl, gs_graphics_texture_desc_t* desc);
 GS_API_DECL void gs_graphics_vertex_buffer_request_update(gs_command_buffer_t* cb, gs_handle(gs_graphics_vertex_buffer_t) hndl, gs_graphics_vertex_buffer_desc_t* desc);
 GS_API_DECL void gs_graphics_index_buffer_request_update(gs_command_buffer_t* cb, gs_handle(gs_graphics_index_buffer_t) hndl, gs_graphics_index_buffer_desc_t* desc);
 GS_API_DECL void gs_graphics_uniform_buffer_request_update(gs_command_buffer_t* cb, gs_handle(gs_graphics_uniform_buffer_t) hndl, gs_graphics_uniform_buffer_desc_t* desc);
+GS_API_DECL void gs_graphics_storage_buffer_request_update(gs_command_buffer_t* cb, gs_handle(gs_graphics_storage_buffer_t) hndl, gs_graphics_storage_buffer_desc_t* desc);
 
-/* Pipeline / Pass / Bind / Draw */
+// Pipeline / Pass / Bind / Draw
 GS_API_DECL void gs_graphics_begin_render_pass(gs_command_buffer_t* cb, gs_handle(gs_graphics_render_pass_t) hndl);
 GS_API_DECL void gs_graphics_end_render_pass(gs_command_buffer_t* cb);
 GS_API_DECL void gs_graphics_set_viewport(gs_command_buffer_t* cb, uint32_t x, uint32_t y, uint32_t w, uint32_t h);
@@ -5426,15 +5813,20 @@ GS_API_DECL void gs_graphics_apply_bindings(gs_command_buffer_t* cb, gs_graphics
 GS_API_DECL void gs_graphics_draw(gs_command_buffer_t* cb, gs_graphics_draw_desc_t* desc);
 GS_API_DECL void gs_graphics_dispatch_compute(gs_command_buffer_t* cb, uint32_t num_x_groups, uint32_t num_y_groups, uint32_t num_z_groups);
 
-/* Submission (Main Thread) */
+// Submission (Main Thread)
 GS_API_DECL void gs_graphics_submit_command_buffer(gs_command_buffer_t* cb);
 
 #ifndef GS_NO_SHORT_NAME
     
-typedef gs_handle(gs_graphics_shader_t)      gs_shader;
-typedef gs_handle(gs_graphics_texture_t)     gs_texture;
-typedef gs_handle(gs_graphics_render_pass_t) gs_renderpass;
-typedef gs_handle(gs_graphics_pipeline_t)    gs_pipeline;
+typedef gs_handle(gs_graphics_shader_t)         gs_shader;
+typedef gs_handle(gs_graphics_texture_t)        gs_texture;
+typedef gs_handle(gs_graphics_render_pass_t)    gs_renderpass;
+typedef gs_handle(gs_graphics_framebuffer_t)    gs_framebuffer;
+typedef gs_handle(gs_graphics_pipeline_t)       gs_pipeline;
+typedef gs_handle(gs_graphics_vertex_buffer_t)  gs_vbo;
+typedef gs_handle(gs_graphics_index_buffer_t)   gs_ibo;
+typedef gs_handle(gs_graphics_uniform_buffer_t) gs_ubo;
+typedef gs_handle(gs_graphics_uniform_t)        gs_uniform;
 
 #endif
 
@@ -5446,7 +5838,7 @@ typedef gs_handle(gs_graphics_pipeline_t)    gs_pipeline;
 
 /** @addtogroup gs_util
  *  @{
- */
+ */ 
 
 // Texture
 typedef struct gs_asset_texture_t
@@ -5461,8 +5853,10 @@ GS_API_DECL bool gs_asset_texture_load_from_memory(const void* memory, size_t sz
 // Font
 typedef struct gs_baked_char_t
 {
-   u16 x0,y0,x1,y1;
-   f32 xoff,yoff,xadvance;
+	uint32_t codepoint;
+	uint16_t x0, y0, x1, y1;
+	float xoff, yoff, advance;
+	uint32_t width, height;
 } gs_baked_char_t;
 
 typedef struct gs_asset_font_t
@@ -5470,11 +5864,15 @@ typedef struct gs_asset_font_t
     void* font_info;
     gs_baked_char_t glyphs[96];
     gs_asset_texture_t texture;
+	float ascent;
+	float descent;
+	float line_gap;
 } gs_asset_font_t; 
 
 GS_API_DECL bool gs_asset_font_load_from_file(const char* path, void* out, uint32_t point_size);
 GS_API_DECL bool gs_asset_font_load_from_memory(const void* memory, size_t sz, void* out, uint32_t point_size);
-GS_API_DECL gs_vec2 gs_asset_font_get_text_dimensions(const gs_asset_font_t* font, const char* text);
+GS_API_DECL gs_vec2 gs_asset_font_text_dimensions(const gs_asset_font_t* font, const char* text, int32_t len);
+GS_API_DECL float gs_asset_font_max_height(const gs_asset_font_t* font);
 
 // Audio
 typedef struct gs_asset_audio_t
@@ -5582,9 +5980,11 @@ typedef struct gs_app_desc_t
     uint32_t window_width;
     uint32_t window_height;
     uint32_t window_flags;
+    uint32_t monitor_index;
     float frame_rate;
     bool32 enable_vsync;
     bool32 is_running;
+    bool32 debug_gfx;
     void* user_data;
 
     // Platform specific data
@@ -5598,48 +5998,48 @@ typedef struct gs_app_desc_t
 } gs_app_desc_t;
 
 /*
-    Game Engine Context: 
+    Game Context: 
 
-    * This is the main context for the gunslinger engine. Holds pointers to 
-        all interfaces registered with the engine, including the description 
+    * This is the main context for the gunslinger framework. Holds pointers to 
+        all interfaces registered with the framework, including the description 
         for your application.
 */
-typedef struct gs_engine_context_t
+typedef struct gs_context_t
 {
     gs_platform_t* platform;
     gs_graphics_t* graphics;
     gs_audio_t* audio;
     gs_app_desc_t app;
-} gs_engine_context_t;
+} gs_context_t; 
 
-typedef struct gs_engine_t
+typedef struct gs_t
 {
-    gs_engine_context_t ctx;
+    gs_context_t ctx;
     void (* shutdown)();
-} gs_engine_t;
+} gs_t;
 
 /* Desc */
-GS_API_DECL gs_engine_t* gs_engine_create(gs_app_desc_t app_desc);
+GS_API_DECL gs_t* gs_create(gs_app_desc_t app_desc);
 /* Desc */
-GS_API_DECL void gs_engine_destroy();
+GS_API_DECL void gs_destroy();
 /* Desc */
-GS_API_DECL gs_engine_t* gs_engine_instance();
+GS_API_DECL gs_t* gs_instance();
 /* Desc */
-GS_API_DECL gs_engine_context_t* gs_engine_ctx();
+GS_API_DECL gs_context_t* gs_ctx();
 /* Desc */
-GS_API_DECL gs_app_desc_t* gs_engine_app();
+GS_API_DECL gs_app_desc_t* gs_app();
 /* Desc */
-GS_API_DECL void gs_engine_frame();
+GS_API_DECL void gs_frame();
 /* Desc */
-GS_API_DECL void gs_engine_quit();
+GS_API_DECL void gs_quit();
 /* Desc */
 GS_API_DECL gs_app_desc_t gs_main(int32_t argc, char** argv);
 
-#define gs_engine_subsystem(__T)\
-    (gs_engine_instance()->ctx.__T)
+#define gs_subsystem(__T)\
+    (gs_instance()->ctx.__T)
 
-#define gs_engine_user_data(__T)\
-    (__T*)(gs_engine_instance()->ctx.app.user_data)
+#define gs_user_data(__T)\
+    (__T*)(gs_instance()->ctx.app.user_data)
 
 /** @} */ // end of gs_app
 
@@ -5739,6 +6139,16 @@ void gs_byte_buffer_clear(gs_byte_buffer_t* buffer)
 {
     buffer->size = 0;
     buffer->position = 0;   
+}
+
+bool gs_byte_buffer_empty(gs_byte_buffer_t* buffer)
+{
+    return (buffer->size == 0);
+}
+
+size_t gs_byte_buffer_size(gs_byte_buffer_t* buffer)
+{
+    return buffer->size;
 }
 
 void gs_byte_buffer_resize(gs_byte_buffer_t* buffer, size_t sz)
@@ -6225,6 +6635,140 @@ GS_API_DECL void* gs_heap_allocator_allocate(gs_heap_allocator_t* ha, size_t sz)
 GS_API_DECL void gs_heap_allocator_deallocate(gs_heap_allocator_t* ha, void* memory)
 {
     // Fill this out...
+} 
+
+/*========================
+// Random
+========================*/ 
+
+/* An implementation of the MT19937 Algorithm for the Mersenne Twister
+ * by Evan Sultanik.  Based upon the pseudocode in: M. Matsumoto and
+ * T. Nishimura, "Mersenne Twister: A 623-dimensionally
+ * equidistributed uniform pseudorandom number generator," ACM
+ * Transactions on Modeling and Computer Simulation Vol. 8, No. 1,
+ * January pp.3-30 1998.
+ *
+ * http://www.sultanik.com/Mersenne_twister
+ */
+
+#define GS_RAND_UPPER_MASK          0x80000000
+#define GS_RAND_LOWER_MASK          0x7fffffff
+#define GS_RAND_TEMPERING_MASK_B    0x9d2c5680
+#define GS_RAND_TEMPERING_MASK_C    0xefc60000 
+
+GS_API_PRIVATE void _gs_rand_seed_impl(gs_mt_rand_t* rand, uint64_t seed) 
+{
+  /* set initial seeds to mt[STATE_VECTOR_LENGTH] using the generator
+   * from Line 25 of Table 1 in: Donald Knuth, "The Art of Computer
+   * Programming," Vol. 2 (2nd Ed.) pp.102.
+   */
+  rand->mt[0] = seed & 0xffffffff;
+  for (rand->index = 1; rand->index < GS_STATE_VECTOR_LENGTH; rand->index++) 
+  {
+    rand->mt[rand->index] = (6069 * rand->mt[rand->index-1]) & 0xffffffff;
+  }
+}
+
+GS_API_DECL gs_mt_rand_t gs_rand_seed(uint64_t seed) 
+{
+  gs_mt_rand_t rand;
+  _gs_rand_seed_impl(&rand, seed);
+  return rand;
+}
+
+GS_API_DECL uint64_t gs_rand_gen_long(gs_mt_rand_t* rand) 
+{
+  uint64_t y;
+  static uint64_t mag[2] = {0x0, 0x9908b0df}; /* mag[x] = x * 0x9908b0df for x = 0,1 */
+  if(rand->index >= GS_STATE_VECTOR_LENGTH || rand->index < 0) {
+    /* generate GS_STATE_VECTOR_LENGTH words at a time */
+    int kk;
+    if(rand->index >= GS_STATE_VECTOR_LENGTH+1 || rand->index < 0) {
+      _gs_rand_seed_impl(rand, 4357);
+    }
+    for(kk=0; kk<GS_STATE_VECTOR_LENGTH-GS_STATE_VECTOR_M; kk++) {
+      y = (rand->mt[kk] & GS_RAND_UPPER_MASK) | (rand->mt[kk+1] & GS_RAND_LOWER_MASK);
+      rand->mt[kk] = rand->mt[kk+GS_STATE_VECTOR_M] ^ (y >> 1) ^ mag[y & 0x1];
+    }
+    for(; kk<GS_STATE_VECTOR_LENGTH-1; kk++) {
+      y = (rand->mt[kk] & GS_RAND_UPPER_MASK) | (rand->mt[kk+1] & GS_RAND_LOWER_MASK);
+      rand->mt[kk] = rand->mt[kk+(GS_STATE_VECTOR_M-GS_STATE_VECTOR_LENGTH)] ^ (y >> 1) ^ mag[y & 0x1];
+    }
+    y = (rand->mt[GS_STATE_VECTOR_LENGTH-1] & GS_RAND_UPPER_MASK) | (rand->mt[0] & GS_RAND_LOWER_MASK);
+    rand->mt[GS_STATE_VECTOR_LENGTH-1] = rand->mt[GS_STATE_VECTOR_M-1] ^ (y >> 1) ^ mag[y & 0x1];
+    rand->index = 0;
+  }
+  y = rand->mt[rand->index++];
+  y ^= (y >> 11);
+  y ^= (y << 7) & GS_RAND_TEMPERING_MASK_B;
+  y ^= (y << 15) & GS_RAND_TEMPERING_MASK_C;
+  y ^= (y >> 18);
+  return y;
+}
+
+GS_API_DECL double gs_rand_gen(gs_mt_rand_t* rand) 
+{
+  return((double)gs_rand_gen_long(rand) / (uint64_t)0xffffffff);
+}
+
+GS_API_DECL uint64_t gs_rand_gen_range_long(gs_mt_rand_t* rand, int32_t min, int32_t max)
+{
+    double v = (gs_map_range(0.0, 1.0, (float)min, (float)max, (float)gs_rand_gen(rand)));
+    return (uint64_t)round(v);
+}
+
+GS_API_DECL double gs_rand_gen_range(gs_mt_rand_t* rand, double min, double max)
+{
+    return gs_map_range(0.0, 1.0, min, max, gs_rand_gen(rand));
+} 
+
+/*================================================================================
+// Noise
+================================================================================*/ 
+
+#define SG_NOISE_IMPL
+#include "external/sg_noise/sg_noise.h"
+
+// Perlin noise
+GS_API_DECL float gs_perlin1(float x)
+{
+    return sg_noise1(x);
+}
+
+GS_API_DECL float gs_perlin2(float x, float y)
+{
+    return sg_noise2(x, y);
+}
+
+GS_API_DECL float gs_perlin3(float x, float y, float z)
+{
+    return sg_noise3(x, y, z);
+}
+
+GS_API_DECL float gs_perlin4(float x, float y, float z, float w)
+{
+    return sg_noise4(x, y, z, w);
+}
+
+// Perlin periodic noise
+GS_API_DECL float gs_perlin1p(float x, int32_t px)
+{
+    return sg_pnoise1(x, px);
+}
+
+GS_API_DECL float gs_perlin2p(float x, float y, int32_t px, int32_t py)
+{
+    return sg_pnoise2(x, y, px, py);
+}
+
+GS_API_DECL float gs_perlin3p(float x, float y, float z, int32_t px, int32_t py, int32_t pz)
+{
+    return sg_pnoise3(x, y, z, px, py, pz);
+}
+
+GS_API_DECL float gs_perlin4p(float x, float y, float z, float w, int32_t px, int32_t py, int32_t pz, int32_t pw)
+{
+    return sg_pnoise4(x, y, z, w, px, py, pz, pw);
 }
 
 /*=============================
@@ -6253,45 +6797,65 @@ gs_camera_t gs_camera_perspective()
     return cam;
 }
 
-gs_vec3 gs_camera_forward(gs_camera_t* cam)
+gs_vec3 gs_camera_forward(const gs_camera_t* cam)
 {
     return (gs_quat_rotate(cam->transform.rotation, gs_v3(0.0f, 0.0f, -1.0f)));
 } 
 
-gs_vec3 gs_camera_backward(gs_camera_t* cam)
+gs_vec3 gs_camera_backward(const gs_camera_t* cam)
 {
     return (gs_quat_rotate(cam->transform.rotation, gs_v3(0.0f, 0.0f, 1.0f)));
 } 
 
-gs_vec3 gs_camera_up(gs_camera_t* cam)
+gs_vec3 gs_camera_up(const gs_camera_t* cam)
 {
     return (gs_quat_rotate(cam->transform.rotation, gs_v3(0.0f, 1.0f, 0.0f)));
 }
 
-gs_vec3 gs_camera_down(gs_camera_t* cam)
+gs_vec3 gs_camera_down(const gs_camera_t* cam)
 {
     return (gs_quat_rotate(cam->transform.rotation, gs_v3(0.0f, -1.0f, 0.0f)));
 }
 
-gs_vec3 gs_camera_right(gs_camera_t* cam)
+gs_vec3 gs_camera_right(const gs_camera_t* cam)
 {
     return (gs_quat_rotate(cam->transform.rotation, gs_v3(1.0f, 0.0f, 0.0f)));
 }
 
-gs_vec3 gs_camera_left(gs_camera_t* cam)
+gs_vec3 gs_camera_left(const gs_camera_t* cam)
 {
     return (gs_quat_rotate(cam->transform.rotation, gs_v3(-1.0f, 0.0f, 0.0f)));
 }
 
-gs_vec3 gs_camera_screen_to_world(gs_camera_t* cam, gs_vec3 coords, s32 view_width, s32 view_height)
+GS_API_DECL gs_vec3 gs_camera_world_to_screen(const gs_camera_t* cam, gs_vec3 coords, int32_t view_width, int32_t view_height)
+{
+    // Transform world coords to screen coords to place billboarded UI elements in world
+    gs_mat4 vp = gs_camera_get_view_projection(cam, view_width, view_height);
+    gs_vec4 p4 = gs_v4(coords.x, coords.y, coords.z, 1.f);
+    p4 = gs_mat4_mul_vec4(vp, p4);
+    p4.x /= p4.w;
+    p4.y /= p4.w;
+    p4.z /= p4.w;
+
+    // Bring into ndc
+    p4.x = p4.x * 0.5f + 0.5f;
+    p4.y = p4.y * 0.5f + 0.5f;
+
+    // Bring into screen space
+    p4.x = p4.x * (float)view_width;
+    p4.y = gs_map_range(1.f, 0.f, 0.f, 1.f, p4.y) * (float)view_height;
+
+    return gs_v3(p4.x, p4.y, p4.z);
+}
+
+gs_vec3 gs_camera_screen_to_world(const gs_camera_t* cam, gs_vec3 coords, s32 view_x, s32 view_y, s32 view_width, s32 view_height)
 {
     gs_vec3 wc = gs_default_val();
 
     // Get inverse of view projection from camera
     gs_mat4 inverse_vp = gs_mat4_inverse(gs_camera_get_view_projection(cam, view_width, view_height));  
-
-    f32 w_x = (f32)coords.x;
-    f32 w_y = (f32)coords.y;
+    f32 w_x = (f32)coords.x - (f32)view_x;
+    f32 w_y = (f32)coords.y - (f32)view_y;
     f32 w_z = (f32)coords.z;
 
     // Transform from ndc
@@ -6309,7 +6873,7 @@ gs_vec3 gs_camera_screen_to_world(gs_camera_t* cam, gs_vec3 coords, s32 view_wid
         return wc;
     }
 
-    out.w = 1.f / out.w;
+    out.w = fabsf(out.w) > GS_EPSILON ? 1.f / out.w : 0.0001f;
     wc = gs_v3(
         out.x * out.w,
         out.y * out.w,
@@ -6319,14 +6883,14 @@ gs_vec3 gs_camera_screen_to_world(gs_camera_t* cam, gs_vec3 coords, s32 view_wid
     return wc;
 }
 
-gs_mat4 gs_camera_get_view_projection(gs_camera_t* cam, s32 view_width, s32 view_height)
+gs_mat4 gs_camera_get_view_projection(const gs_camera_t* cam, s32 view_width, s32 view_height)
 {
     gs_mat4 view = gs_camera_get_view(cam);
     gs_mat4 proj = gs_camera_get_proj(cam, view_width, view_height);
     return gs_mat4_mul(proj, view); 
 }
 
-gs_mat4 gs_camera_get_view(gs_camera_t* cam)
+gs_mat4 gs_camera_get_view(const gs_camera_t* cam)
 {
     gs_vec3 up = gs_camera_up(cam);
     gs_vec3 forward = gs_camera_forward(cam);
@@ -6334,7 +6898,7 @@ gs_mat4 gs_camera_get_view(gs_camera_t* cam)
     return gs_mat4_look_at(cam->transform.position, target, up);
 }
 
-gs_mat4 gs_camera_get_proj(gs_camera_t* cam, s32 view_width, s32 view_height)
+gs_mat4 gs_camera_get_proj(const gs_camera_t* cam, s32 view_width, s32 view_height)
 {
     gs_mat4 proj_mat = gs_mat4_identity();
 
@@ -6361,14 +6925,6 @@ gs_mat4 gs_camera_get_proj(gs_camera_t* cam, s32 view_width, s32 view_height)
                 -distance, 
                 distance    
             );
-            // (
-            //  0.f, 
-            //  view_width, 
-            //  view_height, 
-            //  0.f, 
-            //  cam->near_plane, 
-            //  cam->far_plane  
-            //);
         } break;
     }
 
@@ -6387,10 +6943,11 @@ void gs_camera_offset_orientation(gs_camera_t* cam, f32 yaw, f32 pitch)
 =============================*/
 
 #ifndef GS_NO_STB_RECT_PACK
-    #define STB_RECT_PACK_IMPLEMENTATION
+    // #define STB_RECT_PACK_IMPLEMENTATION
 #endif
 
 #ifndef GS_NO_STB_TRUETYPE
+    // #define STBTT_RASTERIZER_VERSION 0
     #define STB_TRUETYPE_IMPLEMENTATION
 #endif
 
@@ -6400,7 +6957,7 @@ void gs_camera_offset_orientation(gs_camera_t* cam, f32 yaw, f32 pitch)
 
 #ifndef GS_NO_STB_IMAGE
     #define STB_IMAGE_IMPLEMENTATION
-    #define STB_IMAGE_WRITE_IMPLEMENTATION
+    // #define STB_IMAGE_WRITE_IMPLEMENTATION
 #endif
 
 #ifndef GS_NO_CGLTF
@@ -6408,8 +6965,9 @@ void gs_camera_offset_orientation(gs_camera_t* cam, f32 yaw, f32 pitch)
 #endif
 
 // STB
-#include "external/stb/stb.h"
-#include "external/stb/stb_image_write.h"
+#ifdef GS_STB_INCLUDE
+    #include "external/stb/stb.h"
+#endif
 #include "external/stb/stb_truetype.h"
 #include "external/stb/stb_image.h"
 
@@ -6560,14 +7118,13 @@ bool gs_asset_font_load_from_memory(const void* memory, size_t sz, void* out, ui
     if (!point_size) {
         gs_println("Warning: Font: Point size not declared. Setting to default 16.");
         point_size = 16;
-    }
+    } 
 
-    stbtt_fontinfo font = gs_default_val();
-    const u32 w = 512;
-    const u32 h = 512;
-    const u32 num_comps = 4;
-    u8* alpha_bitmap = (u8*)gs_malloc(w * h);
-    u8* flipmap = (u8*)gs_malloc(w * h * num_comps);
+    const uint32_t w = 512;
+    const uint32_t h = 512;
+    const uint32_t num_comps = 4;
+    u8* alpha_bitmap = (uint8_t*)gs_malloc(w * h);
+    u8* flipmap = (uint8_t*)gs_malloc(w * h * num_comps);
     memset(alpha_bitmap, 0, w * h);
     memset(flipmap, 0, w * h * num_comps);
     s32 v = stbtt_BakeFontBitmap((u8*)memory, 0, (float)point_size, alpha_bitmap, w, h, 32, 96, (stbtt_bakedchar*)f->glyphs); // no guarantee this fits!
@@ -6587,14 +7144,15 @@ bool gs_asset_font_load_from_memory(const void* memory, size_t sz, void* out, ui
             flipmap[i1 + 3] = a;
         }
         r--;
-    }
+    } 
 
     gs_graphics_texture_desc_t desc = gs_default_val();
     desc.width = w;
     desc.height = h;
     desc.data = flipmap;
     desc.format = GS_GRAPHICS_TEXTURE_FORMAT_RGBA8;
-    desc.min_filter = GS_GRAPHICS_TEXTURE_FILTER_LINEAR;
+    desc.min_filter = GS_GRAPHICS_TEXTURE_FILTER_NEAREST;
+    desc.mag_filter = GS_GRAPHICS_TEXTURE_FILTER_NEAREST;
 
     // Generate atlas texture for bitmap with bitmap data
     f->texture.hndl = gs_graphics_texture_create(&desc);
@@ -6615,7 +7173,26 @@ bool gs_asset_font_load_from_memory(const void* memory, size_t sz, void* out, ui
     return success;
 }
 
-GS_API_DECL gs_vec2 gs_asset_font_get_text_dimensions(const gs_asset_font_t* fp, const char* text)
+GS_API_DECL float gs_asset_font_max_height(const gs_asset_font_t* fp)
+{
+    if (!fp) return 0.f;
+    float h = 0.f, x = 0.f, y = 0.f;
+    const char* txt = "1l`'f()ABCDEFGHIJKLMNOjPQqSTU!";
+    while (txt[0] != '\0')
+    {
+        char c = txt[0];
+        if (c >= 32 && c <= 127) 
+        {
+            stbtt_aligned_quad q = gs_default_val();
+            stbtt_GetBakedQuad((stbtt_bakedchar*)fp->glyphs, fp->texture.desc.width, fp->texture.desc.height, c - 32, &x, &y, &q, 1);
+            h = gs_max(gs_max(h, fabsf(q.y0)), fabsf(q.y1));
+        }
+        txt++;
+    };
+    return h;
+} 
+
+GS_API_DECL gs_vec2 gs_asset_font_text_dimensions(const gs_asset_font_t* fp, const char* text, int32_t len)
 {
     gs_vec2 dimensions = gs_v2s(0.f);
 
@@ -6623,7 +7200,7 @@ GS_API_DECL gs_vec2 gs_asset_font_get_text_dimensions(const gs_asset_font_t* fp,
     float x = 0.f;
     float y = 0.f;
 
-    while (text[0] != '\0')
+    while (text[0] != '\0' && len--)
     {
         char c = text[0];
         if (c >= 32 && c <= 127) 
@@ -7013,6 +7590,435 @@ bool gs_asset_mesh_load_from_file(const char* path, void* out, gs_asset_mesh_dec
     return true;
 }
 
+/*========================
+// GS_LEXER
+========================*/
+
+//==== [ Token ] ============================================================//
+
+GS_API_DECL gs_token_t gs_token_invalid_token()
+{
+	gs_token_t t = gs_default_val();
+	t.text = "";
+	t.type = GS_TOKEN_UNKNOWN;
+	t.len = 0;
+	return t;
+}
+
+GS_API_DECL bool gs_token_compare_type(const gs_token_t* t, gs_token_type type)
+{
+	return (t->type == type);
+}
+
+GS_API_DECL bool gs_token_compare_text(const gs_token_t* t, const char* match)
+{
+	return (gs_string_compare_equal_n(t->text, match, t->len));
+}
+
+GS_API_DECL void gs_token_print_text(const gs_token_t* t)
+{
+	gs_println("%.*s\n", t->len, t->text);
+}
+
+GS_API_DECL void gs_token_debug_print(const gs_token_t* t)
+{
+	gs_println("%s: %.*s", gs_token_type_to_str(t->type), t->len, t->text);
+}
+
+GS_API_DECL const char* gs_token_type_to_str(gs_token_type type)
+{
+	switch (type)
+	{
+		default:
+		case GS_TOKEN_UNKNOWN: return gs_to_str(GS_TOKEN_UNKNOWN); break;
+		case GS_TOKEN_LPAREN: return gs_to_str(GS_TOKEN_LPAREN); break;
+		case GS_TOKEN_RPAREN: return gs_to_str(GS_TOKEN_RPAREN); break;
+		case GS_TOKEN_LTHAN: return gs_to_str(GS_TOKEN_LTHAN); break; 
+		case GS_TOKEN_GTHAN: return gs_to_str(GS_TOKEN_GTHAN); break; 
+		case GS_TOKEN_SEMI_COLON: return gs_to_str(GS_TOKEN_SEMI_COLON); break;
+		case GS_TOKEN_COLON: return gs_to_str(GS_TOKEN_COLON); break;
+		case GS_TOKEN_COMMA: return gs_to_str(GS_TOKEN_COMMA); break; 
+		case GS_TOKEN_EQUAL: return gs_to_str(GS_TOKEN_EQUAL); break;
+		case GS_TOKEN_NOT: return gs_to_str(GS_TOKEN_NOT); break; 
+		case GS_TOKEN_HASH:	return gs_to_str(GS_TOKEN_HASH); break; 
+		case GS_TOKEN_PIPE: return gs_to_str(GS_TOKEN_PIPE); break; 
+		case GS_TOKEN_AMPERSAND:return gs_to_str(GS_TOKEN_AMPERSAND); break; 
+		case GS_TOKEN_LBRACE: return gs_to_str(GS_TOKEN_LBRACE); break; 
+		case GS_TOKEN_RBRACE: return gs_to_str(GS_TOKEN_RBRACE); break; 
+		case GS_TOKEN_LBRACKET: return gs_to_str(GS_TOKEN_LBRACKET); break; 
+		case GS_TOKEN_RBRACKET: return gs_to_str(GS_TOKEN_RBRACKET); break; 
+		case GS_TOKEN_MINUS: return gs_to_str(GS_TOKEN_MINUS); break; 
+		case GS_TOKEN_PLUS: return gs_to_str(GS_TOKEN_PLUS); break; 
+		case GS_TOKEN_ASTERISK: return gs_to_str(GS_TOKEN_ASTERISK); break; 
+		case GS_TOKEN_BSLASH: return gs_to_str(GS_TOKEN_BLASH); break; 
+		case GS_TOKEN_FSLASH: return gs_to_str(GS_TOKEN_FLASH); break; 
+		case GS_TOKEN_QMARK: return gs_to_str(GS_TOKEN_QMARK); break;
+		case GS_TOKEN_SPACE: return gs_to_str(GS_TOKEN_SPACE); break; 
+		case GS_TOKEN_NEWLINE: return gs_to_str(GS_TOKEN_NEWLINE); break;
+		case GS_TOKEN_TAB: return gs_to_str(GS_TOKEN_TAB); break;
+		case GS_TOKEN_SINGLE_LINE_COMMENT: return gs_to_str(GS_TOKEN_SINGLE_LINE_COMMENT); break;
+		case GS_TOKEN_MULTI_LINE_COMMENT: return gs_to_str(GS_TOKEN_MULTI_LINE_COMMENT); break;
+		case GS_TOKEN_IDENTIFIER: return gs_to_str(GS_TOKEN_IDENTIFIER); break;
+		case GS_TOKEN_NUMBER: return gs_to_str(GS_TOKEN_NUMBER); break;
+	}
+}
+
+GS_API_DECL bool gs_char_is_null_term(char c)
+{
+	return (c == '\0');
+}
+
+GS_API_DECL bool gs_char_is_end_of_line(char c)
+{
+	return (c == '\n' || c == '\r');
+}
+
+GS_API_DECL bool gs_char_is_white_space(char c)
+{
+	return (c == '\t' || c == ' ' || gs_char_is_end_of_line(c));
+}
+
+GS_API_DECL bool gs_char_is_alpha(char c)
+{
+	return ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'));	
+}
+
+GS_API_DECL bool gs_char_is_numeric(char c)
+{
+	return (c >= '0' && c <= '9');
+}
+
+//==== [ Lexer ] ============================================================//
+
+GS_API_DECL void gs_lexer_set_contents(gs_lexer_t* lex, const char* contents)
+{
+	lex->at = contents;
+	lex->current_token = gs_token_invalid_token();
+}
+
+GS_API_DECL bool gs_lexer_c_can_lex(gs_lexer_t* lex)
+{
+	return (lex->at && !gs_char_is_null_term(*(lex->at)));
+}
+
+GS_API_DECL void gs_lexer_c_eat_white_space(gs_lexer_t* lex)
+{
+	for (;;)
+	{
+		if (gs_char_is_white_space(*lex->at))
+		{
+			lex->at++;
+		}
+
+		// Single line comment
+		else if ((lex->at[0] == '/') && (lex->at[1]) && (lex->at[1] == '/'))
+		{
+			lex->at += 2;
+			while (*lex->at && !gs_char_is_end_of_line(*lex->at))
+			{
+				lex->at++;
+			}
+		}
+
+		// Multi-line comment
+		else if ((lex->at[0] == '/') && (lex->at[1]) && (lex->at[1] == '*'))
+		{
+			lex->at += 2;
+			while (lex->at[0] && lex->at[1] && !(lex->at[0] == '*' && lex->at[1] == '/'))
+			{
+				lex->at++;
+			}
+			if (lex->at[0] == '*')
+			{
+				lex->at++;
+			}
+		}
+
+		else
+		{
+			break;
+		}
+	}
+}
+
+GS_API_DECL gs_token_t gs_lexer_c_next_token(gs_lexer_t* lex)
+{ 
+    lex->eat_white_space(lex);
+
+	gs_token_t t = gs_token_invalid_token();
+	t.text = lex->at;
+	t.len = 1;
+
+	if (lex->can_lex(lex)) 
+    { 
+		char c = *lex->at;
+		switch (c)
+		{
+			case '(': {t.type = GS_TOKEN_LPAREN; lex->at++;} break;
+			case ')': {t.type = GS_TOKEN_RPAREN; lex->at++;} break;
+			case '<': {t.type = GS_TOKEN_LTHAN; lex->at++;} break;
+			case '>': {t.type = GS_TOKEN_GTHAN; lex->at++;} break;
+			case ';': {t.type = GS_TOKEN_SEMI_COLON; lex->at++;} break;
+			case ':': {t.type = GS_TOKEN_COLON; lex->at++;} break;
+			case ',': {t.type = GS_TOKEN_COMMA; lex->at++;} break;
+			case '=': {t.type = GS_TOKEN_EQUAL; lex->at++;} break;
+			case '!': {t.type = GS_TOKEN_NOT; lex->at++;} break;
+			case '#': {t.type = GS_TOKEN_HASH; lex->at++;} break;
+			case '|': {t.type = GS_TOKEN_PIPE; lex->at++;} break;
+			case '&': {t.type = GS_TOKEN_AMPERSAND; lex->at++;} break;
+			case '{': {t.type = GS_TOKEN_LBRACE; lex->at++;} break;
+			case '}': {t.type = GS_TOKEN_RBRACE; lex->at++;} break;
+			case '[': {t.type = GS_TOKEN_LBRACKET; lex->at++;} break;
+			case ']': {t.type = GS_TOKEN_RBRACKET; lex->at++;} break;
+			case '-': {t.type = GS_TOKEN_MINUS; lex->at++;} break;
+			case '+': {t.type = GS_TOKEN_PLUS; lex->at++;} break;
+			case '*': {t.type = GS_TOKEN_ASTERISK; lex->at++;} break;
+			case '\\': {t.type = GS_TOKEN_BSLASH; lex->at++;} break;
+			case '?': {t.type = GS_TOKEN_QMARK; lex->at++;} break;
+			case ' ': {t.type = GS_TOKEN_SPACE; lex->at++;} break;
+			case '\n': {t.type = GS_TOKEN_NEWLINE; lex->at++;} break;
+			case '\r': {t.type = GS_TOKEN_NEWLINE; lex->at++;} break;
+			case '\t': {t.type = GS_TOKEN_TAB; lex->at++;} break;
+			
+			case '/':
+			{
+				// Single line comment
+				if ((lex->at[0] == '/') && (lex->at[1]) && (lex->at[1] == '/'))
+				{
+					lex->at += 2;
+					while (lex->at[0] && !gs_char_is_end_of_line(lex->at[0]))
+					{
+						lex->at++;
+					}
+					t.len = lex->at - t.text;
+					t.type = GS_TOKEN_SINGLE_LINE_COMMENT;
+				}
+
+				// Multi line comment
+				else if ((lex->at[0] == '/') && (lex->at[1]) && (lex->at[1] == '*'))
+				{
+					lex->at += 2;
+					while (lex->can_lex(lex))
+					{
+						if (lex->at[0] == '*' && lex->at[1] == '/')
+						{
+							lex->at += 2;
+							break;
+						}
+						lex->at++;
+					}
+					t.len = lex->at - t.text;
+					t.type = GS_TOKEN_MULTI_LINE_COMMENT;
+				}
+				// it's just a forward slash
+				else
+				{
+					t.type = GS_TOKEN_FSLASH;
+					lex->at++;
+				}
+		    } break;
+
+			case '"':
+			{
+				// Move forward after finding first quotation
+				lex->at++;
+
+				while (lex->at && *lex->at  != '"')
+				{
+					if (lex->at[0] == '\\' && lex->at[1])
+					{
+						lex->at++;
+					}
+					lex->at++;
+				}
+
+				//Move past quotation
+				lex->at++;
+				t.len = lex->at - t.text;
+				t.type = GS_TOKEN_STRING;
+			} break;
+
+			// Alpha/Numeric/Identifier
+			default: 
+			{
+				if ((gs_char_is_alpha(c) || c == '_') && c != '-')
+				{
+					while (
+						gs_char_is_alpha(lex->at[0]) || 
+						gs_char_is_numeric(lex->at[0]) || 
+						lex->at[0] == '_'
+					)
+					{
+						lex->at++;
+					}
+
+					t.len = lex->at - t.text;
+					t.type = GS_TOKEN_IDENTIFIER;
+				}
+				else if (gs_char_is_numeric(c) || c == '-')
+				{
+					uint32_t num_decimals = 0;
+					while (
+						gs_char_is_numeric(lex->at[0]) || 
+						(lex->at[0] == '.' && num_decimals == 0) || 
+						lex->at[0] == 'f'
+					)
+					{
+						// Grab decimal
+						num_decimals = lex->at[0] == '.' ? num_decimals++ : num_decimals;
+
+						//Increment
+						lex->at++;
+					}
+
+					t.len = lex->at - t.text;
+					t.type = GS_TOKEN_NUMBER;
+				}
+				else
+				{
+					t.type = GS_TOKEN_UNKNOWN;
+					lex->at++;
+				}
+
+			} break;
+		}
+	}
+
+	// Set current token for lex
+	lex->current_token = t;
+
+	return t;
+}
+
+GS_API_DECL gs_token_t gs_lexer_next_token(gs_lexer_t* lex)
+{
+    return lex->next_token(lex);
+}
+
+GS_API_DECL bool gs_lexer_can_lex(gs_lexer_t* lex)
+{
+    return lex->can_lex(lex);
+}
+
+GS_API_DECL gs_token_t gs_lexer_current_token(const gs_lexer_t* lex)
+{
+	return lex->current_token;
+}
+
+GS_API_DECL bool gs_lexer_current_token_compare_type(const gs_lexer_t* lex, gs_token_type type)
+{
+	return (lex->current_token.type == type);
+}
+
+GS_API_DECL gs_token_t gs_lexer_peek(gs_lexer_t* lex)
+{
+	// Store current at and current token
+	const char* at = lex->at;
+	gs_token_t cur_t = gs_lexer_current_token(lex);
+
+	// Get next token
+	gs_token_t next_t = lex->next_token(lex);
+
+	// Reset
+	lex->current_token = cur_t;
+	lex->at = at;
+
+	// Return
+	return next_t;
+}
+
+// Check to see if token type of next valid token matches 'match'. Restores place in lex if not.
+GS_API_DECL bool gs_lexer_require_token_text(gs_lexer_t* lex, const char* match)
+{
+	// Store current position and token
+	const char* at = lex->at;
+	gs_token_t cur_t = lex->current_token; 
+
+	// Get next token
+	gs_token_t next_t = lex->next_token(lex);
+
+	// Compare token text
+	if (gs_token_compare_text(&next_t, match))
+	{
+		return true;
+	}
+
+	// Error
+	gs_println("error::gs_lexer_require_token_text::%.*s, expected: %s", cur_t.len, cur_t.text, match);
+
+	// Reset
+	lex->at = at;
+	lex->current_token = cur_t;
+
+	return false;
+}
+
+GS_API_DECL bool gs_lexer_require_token_type(gs_lexer_t* lex, gs_token_type type)
+{
+	// Store current position and token
+	const char* at = lex->at;
+	gs_token_t cur_t = lex->current_token;
+
+	// Get next token
+	gs_token_t next_t = lex->next_token(lex);
+
+	// Compare token type
+	if (gs_token_compare_type(&next_t, type))
+	{
+		return true;
+	}
+
+	// Error
+	gs_println("error::gs_lexer_require_token_type::%s, expected: %s", gs_token_type_to_str(next_t.type), gs_token_type_to_str(type));
+
+	// Reset
+	lex->at = at;
+	lex->current_token = cur_t;
+
+	return false;
+}
+
+// Advances until next token of given type is found
+GS_API_DECL bool gs_lexer_find_next_token_type(gs_lexer_t* lex, gs_token_type type)
+{
+	gs_token_t t = lex->next_token(lex);
+	while (lex->can_lex(lex))
+	{
+		if (gs_token_compare_type(&t, type))
+		{
+			return true;
+		}
+		t = lex->next_token(lex);
+	}
+	return false;
+}
+
+GS_API_DECL gs_token_t gs_lexer_advance_before_next_token_type(gs_lexer_t* lex, gs_token_type type)
+{
+	gs_token_t t = lex->current_token;
+	gs_token_t peek_t = gs_lexer_peek(lex);
+
+	// Continue right up until required token type
+	while (!gs_token_compare_type(&peek_t, type))
+	{
+		t = lex->next_token(lex);
+		peek_t = gs_lexer_peek(lex);
+	}
+
+	return t;
+}
+
+GS_API_DECL gs_lexer_t gs_lexer_c_ctor(const char* contents)
+{
+	gs_lexer_t lex = gs_default_val();
+	lex.contents = contents;
+	lex.at = contents;
+	lex.can_lex = gs_lexer_c_can_lex;
+	lex.eat_white_space = gs_lexer_c_eat_white_space;
+	lex.next_token = gs_lexer_c_next_token;
+	return lex;
+}
+
 /*=============================
 // GS_ENGINE
 =============================*/
@@ -7020,12 +8026,12 @@ bool gs_asset_mesh_load_from_file(const char* path, void* out, gs_asset_mesh_dec
 void gs_default_app_func();
 void gs_default_main_window_close_callback(void* window);
 
-// Global instance of gunslinger engine (...THERE CAN ONLY BE ONE)
-gs_global gs_engine_t* __g_engine_instance = gs_default_val();
+// Global instance of gunslinger framework (...THERE CAN ONLY BE ONE)
+gs_global gs_t* _gs_instance = gs_default_val();
 
-gs_engine_t* gs_engine_create(gs_app_desc_t app_desc)
+gs_t* gs_create(gs_app_desc_t app_desc)
 {
-    if (gs_engine_instance() == NULL)
+    if (gs_instance() == NULL)
     {
         // Check app desc for defaults
         if (app_desc.window_width == 0)     app_desc.window_width = 800;
@@ -7037,78 +8043,80 @@ gs_engine_t* gs_engine_create(gs_app_desc_t app_desc)
         if (app_desc.init == NULL)          app_desc.init = &gs_default_app_func;
 
         // Construct instance
-        __g_engine_instance = gs_malloc_init(gs_engine_t);
+        _gs_instance = gs_malloc_init(gs_t);
 
-        // Set application description for engine
-        gs_engine_instance()->ctx.app = app_desc;
+        // Set application description for framework
+        gs_instance()->ctx.app = app_desc;
 
         // Set up function pointers
-        gs_engine_instance()->shutdown  = &gs_engine_destroy;
+        gs_instance()->shutdown  = &gs_destroy;
 
         // Need to have video settings passed down from user
-        gs_engine_subsystem(platform) = gs_platform_create();
+        gs_subsystem(platform) = gs_platform_create();
+
+        // Enable graphics API debugging
+        gs_subsystem(platform)->settings.video.graphics.debug = app_desc.debug_gfx;
 
         // Default initialization for platform here
-        gs_platform_init(gs_engine_subsystem(platform));
+        gs_platform_init(gs_subsystem(platform));
 
         // Set frame rate for application
-        gs_engine_subsystem(platform)->time.max_fps = app_desc.frame_rate;
+        gs_subsystem(platform)->time.max_fps = app_desc.frame_rate;
 
         // Construct main window
-        gs_platform_create_window(app_desc.window_title, app_desc.window_width, app_desc.window_height);
+        gs_platform_create_window(app_desc.window_title, app_desc.window_width, app_desc.window_height, app_desc.monitor_index);
 
         // Set vsync for video
         gs_platform_enable_vsync(app_desc.enable_vsync); 
 
         // Construct graphics api 
-        gs_engine_subsystem(graphics) = gs_graphics_create();
+        gs_subsystem(graphics) = gs_graphics_create();
 
         // Initialize graphics here
-        gs_graphics_init(gs_engine_subsystem(graphics));
+        gs_graphics_init(gs_subsystem(graphics));
 
         // Construct audio api
-        gs_engine_subsystem(audio) = gs_audio_create();
+        gs_subsystem(audio) = gs_audio_create();
 
         // Initialize audio
-        gs_audio_init(gs_engine_subsystem(audio));
+        gs_audio_init(gs_subsystem(audio));
 
         // Initialize application
         app_desc.init();
 
-        gs_engine_ctx()->app.is_running = true;
+        gs_ctx()->app.is_running = true;
 
         // Set default callback for when main window close button is pressed
         gs_platform_set_window_close_callback(gs_platform_main_window(), &gs_default_main_window_close_callback);
     }
 
-    return gs_engine_instance();
+    return gs_instance();
 }
 
-gs_engine_t* gs_engine_instance()
+gs_t* gs_instance()
 {
-    return __g_engine_instance;
+    return _gs_instance;
 }
 
-gs_engine_context_t* gs_engine_ctx()
+gs_context_t* gs_ctx()
 {
-    return &gs_engine_instance()->ctx;
+    return &gs_instance()->ctx;
 }
 
-gs_app_desc_t* gs_engine_app()
+gs_app_desc_t* gs_app()
 {
-    return &gs_engine_instance()->ctx.app;
+    return &gs_instance()->ctx.app;
 }
 
-// Define main frame function for engine to step
-// Get rid of this eventually and just allow for the internal platform layer to decide how to update.
-GS_API_DECL void gs_engine_frame()
+// Define main frame function for framework to step
+GS_API_DECL void gs_frame()
 {
     // Remove these...
     static uint32_t curr_ticks = 0; 
     static uint32_t prev_ticks = 0;
 
     // Cache platform pointer
-    gs_platform_t* platform = gs_engine_subsystem(platform);
+    gs_platform_t* platform = gs_subsystem(platform);
 
     // Cache times at start of frame
     platform->time.current  = gs_platform_elapsed_time();
@@ -7117,15 +8125,15 @@ GS_API_DECL void gs_engine_frame()
 
     // Update platform and process input
     gs_platform_update(platform);
-    if (!gs_engine_instance()->ctx.app.is_running) {
-        gs_engine_instance()->shutdown();
+    if (!gs_instance()->ctx.app.is_running) {
+        gs_instance()->shutdown();
         return;
     }
 
     // Process application context
-    gs_engine_instance()->ctx.app.update();
-    if (!gs_engine_instance()->ctx.app.is_running) {
-        gs_engine_instance()->shutdown();
+    gs_instance()->ctx.app.update();
+    if (!gs_instance()->ctx.app.is_running) {
+        gs_instance()->shutdown();
         return;
     }
 
@@ -7165,21 +8173,21 @@ GS_API_DECL void gs_engine_frame()
     }
 }
 
-void gs_engine_destroy()
+void gs_destroy()
 {
     // Shutdown application
-    gs_engine_ctx()->app.shutdown();
-    gs_engine_ctx()->app.is_running = false;
+    gs_ctx()->app.shutdown();
+    gs_ctx()->app.is_running = false;
 
     // Shutdown subsystems
-    gs_graphics_shutdown(gs_engine_subsystem(graphics));
-    gs_graphics_destroy(gs_engine_subsystem(graphics));
+    gs_graphics_shutdown(gs_subsystem(graphics));
+    gs_graphics_destroy(gs_subsystem(graphics));
 
-    gs_audio_shutdown(gs_engine_subsystem(audio));
-    gs_audio_destroy(gs_engine_subsystem(audio));
+    gs_audio_shutdown(gs_subsystem(audio));
+    gs_audio_destroy(gs_subsystem(audio));
 
-    gs_platform_shutdown(gs_engine_subsystem(platform)); 
-    gs_platform_destroy(gs_engine_subsystem(platform));
+    gs_platform_shutdown(gs_subsystem(platform)); 
+    gs_platform_destroy(gs_subsystem(platform));
 }
 
 void gs_default_app_func()
@@ -7189,24 +8197,19 @@ void gs_default_app_func()
 
 void gs_default_main_window_close_callback(void* window)
 {
-    gs_engine_instance()->ctx.app.is_running = false;
+    gs_instance()->ctx.app.is_running = false;
 }
 
-void gs_engine_quit()
+void gs_quit()
 {
-#ifndef GS_PLATFORM_WEB
-    gs_engine_instance()->ctx.app.is_running = false;
-#endif
+    #ifndef GS_PLATFORM_WEB
+        gs_instance()->ctx.app.is_running = false;
+    #endif
 }
 
 #undef GS_IMPL
-#endif // GS_IMPL
-
-// #ifdef __cplusplus
-// }
-// #endif // c++
-
-#endif // __GS_INCLUDED_H__
+#endif // GS_IMPL 
+#endif // GS_H
 
 /*
     Layout decl
@@ -7454,7 +8457,7 @@ void gs_engine_quit()
 
         int main(int32_t argc, char** argv) 
         {
-            emscripten_set_main_loop(gs_engine_create(gs_main(argc, argv))->run(), 0, true);
+            emscripten_set_main_loop(gs_create(gs_main(argc, argv))->run(), 0, true);
         }
 
 */

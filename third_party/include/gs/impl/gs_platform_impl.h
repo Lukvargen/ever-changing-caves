@@ -5,8 +5,8 @@
     All Rights Reserved
 =================================================================*/
 
-#ifndef __GS_PLATFORM_IMPL_H__
-#define __GS_PLATFORM_IMPL_H__
+#ifndef GS_PLATFORM_IMPL_H
+#define GS_PLATFORM_IMPL_H
 
 /*=================================
 // Default Platform Implemenattion
@@ -25,6 +25,9 @@
 
 #if !( defined GS_PLATFORM_WIN )
     #include <sys/stat.h>
+    #include <dirent.h>
+#else
+	#include "../external/dirent/dirent.h"
 #endif
 
 /*== Platform Window ==*/
@@ -55,11 +58,11 @@ void gs_platform_destroy(gs_platform_t* platform)
     platform = NULL;
 }
 
-uint32_t gs_platform_create_window(const char* title, uint32_t width, uint32_t height)
+uint32_t gs_platform_create_window(const char* title, uint32_t width, uint32_t height, uint32_t monitor_index)
 {
-    gs_assert(gs_engine_instance() != NULL);
-    gs_platform_t* platform = gs_engine_subsystem(platform);
-    void* win = gs_platform_create_window_internal(title, width, height);
+    gs_assert(gs_instance() != NULL);
+    gs_platform_t* platform = gs_subsystem(platform);
+    void* win = gs_platform_create_window_internal(title, width, height, monitor_index);
     return (gs_slot_array_insert(platform->windows, win));
 }
 
@@ -73,7 +76,7 @@ uint32_t gs_platform_main_window()
 
 float gs_platform_delta_time()
 {
-    return (float)gs_engine_subsystem(platform)->time.delta;
+    return (float)gs_subsystem(platform)->time.delta;
 }
 
 /*== Platform UUID ==*/
@@ -152,95 +155,8 @@ uint32_t gs_platform_uuid_hash(const gs_uuid_t* uuid)
     return (gs_hash_str(temp_buffer));
 }
 
-/*=== Platform Directory ===*/
-
-#ifdef GS_PLATFORM_WIN
-
-	typedef struct gs_platform_dir_data_t 
-	{
-		WIN32_FIND_DATAA fdata;
-		HANDLE hfind;
-	} gs_platform_dir_data_t;
-
-#elif (defined GS_PLATFORM_APPLE || defined GS_PLATFORM_LINUX)
-
-#endif
-
-GS_API_DECL gs_platform_dir_iter_t gs_platform_dir_iter_create(const char* path, bool32 recursive)
-{
-    gs_platform_dir_iter_t iter = gs_default_val();
-	memcpy(iter.root_path, path, GS_PLATFORM_DIR_MAX_STR_SZ);
-	iter.is_recursive = recursive;
-
-	// Depending on internal implementation, set pointer to something specific
-	#if (defined  GS_PLATFORM_WIN)
-
-		// Look for some windows shit
-		iter.hndl = gs_malloc_init(gs_platform_dir_data_t);
-		gs_platform_dir_data_t* hndl = (gs_platform_dir_data_t*)iter.hndl;
-		hndl->hfind = FindFirstFileA(path, &hndl->fdata);
-		if (hndl->hfind == INVALID_HANDLE_VALUE) 
-        {
-			gs_println("error: gs_platform_dir_iter_create:FindFirstFile failed (%d)\n", GetLastError());
-			gs_free(iter.hndl);
-			iter.hndl = NULL;
-		} 
-
-		// Set whether is directory
-		iter.is_dir = (hndl->fdata.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
-
-		// Copy file path name
-		memcpy(iter.path, hndl->fdata.cFileName, GS_PLATFORM_DIR_MAX_STR_SZ);
-
-	#elif (defined GS_PLATFORM_APPLE || defined GS_PLATFORM_LINUX)
-
-		// Look for some unix shit
-
-	#endif
-
-    return iter;
-}
-
-GS_API_DECL bool32 gs_platform_dir_iter_valid(gs_platform_dir_iter_t* iter)
-{
-	if (!iter || !iter->hndl) return false;
-
-	#ifdef GS_PLATFORM_WIN
-
-		gs_platform_dir_data_t* hndl = (gs_platform_dir_data_t*)iter->hndl;
-
-		// Just try to read iter data for now
-		int32_t ret = FindNextFileA(hndl->hfind, &hndl->fdata);
-
-		// Clear data
-		if (!ret)
-		{
-            // Close handle
-            FindClose(hndl->hfind);
-
-            // Free data handle
-			gs_free(iter->hndl);
-			iter->hndl = NULL;
-			return false;
-		}
-
-		// Set whether is directory
-		iter->is_dir = (hndl->fdata.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
-
-		// Copy file path name
-		memcpy(iter->path, hndl->fdata.cFileName, GS_PLATFORM_DIR_MAX_STR_SZ);
-
-		return true;
-
-	#elif (defined GS_PLATFORM_APPLE || defined GS_PLATFORM_LINUX)
-
-		return false;
-
-	#endif
-}
-
 #define __gs_input()\
-    (&gs_engine_subsystem(platform)->input)
+    (&gs_subsystem(platform)->input)
 
 /*=== Platform Input ===*/
 void gs_platform_update_input(gs_platform_input_t* input)
@@ -269,7 +185,7 @@ void gs_platform_update_input(gs_platform_input_t* input)
 
 void gs_platform_poll_all_events()
 {
-    gs_platform_t* platform = gs_engine_subsystem(platform);
+    gs_platform_t* platform = gs_subsystem(platform);
    
    platform->input.mouse.delta.x = 0;
    platform->input.mouse.delta.y = 0;
@@ -374,7 +290,7 @@ void gs_platform_poll_all_events()
                         gs_vec2 *d = &platform->input.touch.points[id].delta;
                         gs_platform_press_touch(id);
                         *p = *pos;
-                        gs_engine_subsystem(platform)->input.touch.size++;
+                        gs_subsystem(platform)->input.touch.size++;
                     } break;
 
                     case GS_PLATFORM_TOUCH_UP:
@@ -382,7 +298,7 @@ void gs_platform_poll_all_events()
                         uintptr_t id = point->id;
                         gs_println("Releasing ID: %zu", id);
                         gs_platform_release_touch(id);
-                        gs_engine_subsystem(platform)->input.touch.size--;
+                        gs_subsystem(platform)->input.touch.size--;
                     } break;
 
                     case GS_PLATFORM_TOUCH_MOVE:
@@ -400,7 +316,7 @@ void gs_platform_poll_all_events()
                     {
                         uintptr_t id = point->id;
                         gs_platform_release_touch(id);
-                        gs_engine_subsystem(platform)->input.touch.size--;
+                        gs_subsystem(platform)->input.touch.size--;
                     } break;
                 }
             } break;
@@ -424,7 +340,7 @@ void gs_platform_update(gs_platform_t* platform)
 
 bool gs_platform_poll_events(gs_platform_event_t* evt, bool32_t consume)
 {
-    gs_platform_t* platform = gs_engine_subsystem(platform);
+    gs_platform_t* platform = gs_subsystem(platform);
 
     if (!evt) return false;
     if (gs_dyn_array_empty(platform->events)) return false;
@@ -447,7 +363,7 @@ bool gs_platform_poll_events(gs_platform_event_t* evt, bool32_t consume)
 
 void gs_platform_add_event(gs_platform_event_t* evt)
 {
-    gs_platform_t* platform = gs_engine_subsystem(platform);
+    gs_platform_t* platform = gs_subsystem(platform);
     if (!evt) return;
     gs_dyn_array_push(platform->events, *evt);
 }
@@ -588,6 +504,13 @@ void gs_platform_mouse_wheel(f32* x, f32* y)
     *y = input->mouse.wheel.y;  
 }
 
+GS_API_DECL gs_vec2 gs_platform_mouse_wheelv()
+{
+    gs_vec2 wheel = gs_default_val();
+    gs_platform_mouse_wheel(&wheel.x, &wheel.y);
+    return wheel;
+}
+
 bool gs_platform_mouse_locked()
 {
     return (__gs_input())->mouse.locked;
@@ -673,7 +596,7 @@ char* gs_platform_read_file_contents_default_impl(const char* file_path, const c
     const char* path = file_path;
 
     #ifdef GS_PLATFORM_ANDROID
-        const char* internal_data_path = gs_engine_app()->android.internal_data_path;
+        const char* internal_data_path = gs_app()->android.internal_data_path;
         gs_snprintfc(tmp_path, 1024, "%s/%s", internal_data_path, file_path);
         path = tmp_path;
     #endif
@@ -686,7 +609,7 @@ char* gs_platform_read_file_contents_default_impl(const char* file_path, const c
         read_sz = gs_platform_file_size_in_bytes(file_path);
         buffer = (char*)gs_malloc(read_sz + 1);
         if (buffer) {
-            fread(buffer, 1, read_sz, fp);
+           size_t _r = fread(buffer, 1, read_sz, fp);
         }
         buffer[read_sz] = '\0';
         fclose(fp);
@@ -701,7 +624,7 @@ gs_result gs_platform_write_file_contents_default_impl(const char* file_path, co
     const char* path = file_path;
 
     #ifdef GS_PLATFORM_ANDROID
-        const char* internal_data_path = gs_engine_app()->android.internal_data_path;
+        const char* internal_data_path = gs_app()->android.internal_data_path;
         gs_snprintfc(tmp_path, 1024, "%s/%s", internal_data_path, file_path);
         path = tmp_path;
     #endif
@@ -720,12 +643,32 @@ gs_result gs_platform_write_file_contents_default_impl(const char* file_path, co
     return GS_RESULT_FAILURE;
 }
 
+GS_API_DECL bool gs_platform_dir_exists_default_impl(const char* dir_path)
+{
+	DIR* dir = opendir(dir_path);
+	if (dir)
+	{
+		closedir(dir);
+		return true;
+	}
+	return false;
+}
+
+GS_API_DECL int32_t gs_platform_mkdir_default_impl(const char* dir_path, int32_t opt)
+{ 
+    #ifdef __MINGW32__
+        return mkdir(dir_path);
+    #else
+        return mkdir(dir_path, opt);
+    #endif
+}
+
 bool gs_platform_file_exists_default_impl(const char* file_path)
 {
     const char* path = file_path;
 
     #ifdef GS_PLATFORM_ANDROID
-        const char* internal_data_path = gs_engine_app()->android.internal_data_path;
+        const char* internal_data_path = gs_app()->android.internal_data_path;
         gs_snprintfc(tmp_path, 1024, "%s/%s", internal_data_path, file_path);
         path = tmp_path;
     #endif
@@ -761,7 +704,7 @@ int32_t gs_platform_file_size_in_bytes_default_impl(const char* file_path)
 
     #elif (defined GS_PLATFORM_ANDROID)
 
-        const char* internal_data_path = gs_engine_app()->android.internal_data_path;
+        const char* internal_data_path = gs_app()->android.internal_data_path;
         gs_snprintfc(tmp_path, 1024, "%s/%s", internal_data_path, file_path);
         struct stat st;
         stat(tmp_path, &st);
@@ -809,6 +752,7 @@ void gs_platform_file_extension_default_impl(char* buffer, size_t buffer_sz, con
 
 // Forward Decls.
 void __glfw_key_callback(GLFWwindow* window, s32 key, s32 scancode, s32 action, s32 mods);
+void __glfw_char_callback(GLFWwindow* window, uint32_t codepoint);
 void __glfw_mouse_button_callback(GLFWwindow* window, s32 button, s32 action, s32 mods);
 void __glfw_mouse_cursor_position_callback(GLFWwindow* window, f64 x, f64 y);
 void __glfw_mouse_scroll_wheel_callback(GLFWwindow* window, f64 xoffset, f64 yoffset);
@@ -846,6 +790,12 @@ void gs_platform_init(gs_platform_t* pf)
                 // glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
                 // glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
                 // glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+                if (pf->settings.video.graphics.debug)
+                {
+                    glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GLFW_TRUE);
+                    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+                    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+                }
             #endif
             // glfwSwapInterval(platform->settings.video.vsync_enabled);
             // glfwSwapInterval(0);
@@ -1278,10 +1228,23 @@ gs_platform_mouse_button_code __glfw_button_to_gs_mouse_button(s32 code)
     return GS_MOUSE_BUTTON_CODE_COUNT;
 }
 
+void __glfw_char_callback(GLFWwindow* window, uint32_t codepoint)
+{
+    // Grab platform instance from engine
+    gs_platform_t* platform = gs_subsystem(platform); 
+
+    gs_platform_event_t evt = gs_default_val();
+    evt.type = GS_PLATFORM_EVENT_TEXT;
+    evt.text.codepoint = codepoint;
+
+    // Add action
+    gs_platform_add_event(&evt);
+}
+
 void __glfw_key_callback(GLFWwindow* window, s32 code, s32 scancode, s32 action, s32 mods) 
 {
     // Grab platform instance from engine
-    gs_platform_t* platform = gs_engine_subsystem(platform);
+    gs_platform_t* platform = gs_subsystem(platform);
 
     // Get keycode from key
     gs_platform_keycode key = glfw_key_to_gs_keycode(code);
@@ -1324,7 +1287,7 @@ void __glfw_key_callback(GLFWwindow* window, s32 code, s32 scancode, s32 action,
 void __glfw_mouse_button_callback(GLFWwindow* window, s32 code, s32 action, s32 mods)
 {
     // Grab platform instance from engine
-    gs_platform_t* platform = gs_engine_subsystem(platform);
+    gs_platform_t* platform = gs_subsystem(platform);
 
     // Get mouse code from key
     gs_platform_mouse_button_code button = __glfw_button_to_gs_mouse_button(code);
@@ -1365,7 +1328,7 @@ void __glfw_mouse_button_callback(GLFWwindow* window, s32 code, s32 action, s32 
 
 void __glfw_mouse_cursor_position_callback(GLFWwindow* window, f64 x, f64 y)
 {
-    gs_platform_t* platform = gs_engine_subsystem(platform);
+    gs_platform_t* platform = gs_subsystem(platform);
     // platform->input.mouse.position = gs_v2((f32)x, (f32)y);
     // platform->input.mouse.moved_this_frame = true;
 
@@ -1393,7 +1356,7 @@ void __glfw_mouse_cursor_position_callback(GLFWwindow* window, f64 x, f64 y)
 
 void __glfw_mouse_scroll_wheel_callback(GLFWwindow* window, f64 x, f64 y)
 {
-    gs_platform_t* platform = gs_engine_subsystem(platform);
+    gs_platform_t* platform = gs_subsystem(platform);
     platform->input.mouse.wheel = gs_v2((f32)x, (f32)y);
 
     // Push back event into platform events
@@ -1407,7 +1370,7 @@ void __glfw_mouse_scroll_wheel_callback(GLFWwindow* window, f64 x, f64 y)
 // Gets called when mouse enters or leaves frame of window
 void __glfw_mouse_cursor_enter_callback(GLFWwindow* window, s32 entered)
 {
-    gs_platform_t* platform = gs_engine_subsystem(platform);
+    gs_platform_t* platform = gs_subsystem(platform);
     gs_platform_event_t gs_evt = gs_default_val();
     gs_evt.type = GS_PLATFORM_EVENT_MOUSE;
     gs_evt.mouse.action = entered ? GS_PLATFORM_MOUSE_ENTER : GS_PLATFORM_MOUSE_LEAVE;
@@ -1440,7 +1403,19 @@ void  gs_platform_sleep(float ms)
 
             usleep(ms * 1000.f); // unistd.h
     #else
-            usleep(ms * 1000.f); // unistd.h
+	    if (ms < 0.f) {
+		return;
+	    }
+
+	    struct timespec ts = gs_default_val();
+	    int32_t res = 0;
+	    ts.tv_sec = ms / 1000.f;
+	    ts.tv_nsec = ((uint64_t)ms % 1000) * 1000000;
+	    do {
+		res = nanosleep(&ts, &ts);
+	    } while (res && errno == EINTR);
+
+            // usleep(ms * 1000.f); // unistd.h
     #endif
 }
 
@@ -1456,17 +1431,39 @@ void  gs_platform_enable_vsync(int32_t enabled)
     glfwSwapInterval(enabled ? 1 : 0);
 }
 
+/*== OpenGL debug callback == */
+void GLAPIENTRY __gs_platform_gl_debug(GLenum source, GLenum type, GLuint id, GLenum severity,
+                            GLsizei len, const GLchar* msg, const void* user)
+{
+    if (severity != GL_DEBUG_SEVERITY_NOTIFICATION)
+    {
+        gs_println("GL: %s", msg);
+    }
+}
+
 /*== Platform Window == */
 
-void* gs_platform_create_window_internal(const char* title, uint32_t width, uint32_t height)
+void* gs_platform_create_window_internal(const char* title, uint32_t width, uint32_t height, uint32_t monitor_index)
 {
     // Grab window hints from application desc
-    u32 window_hints = gs_engine_instance()->ctx.app.window_flags;
+    u32 window_hints = gs_instance()->ctx.app.window_flags;
 
     // Set whether or not the screen is resizable
     glfwWindowHint(GLFW_RESIZABLE, (window_hints & GS_WINDOW_FLAGS_NO_RESIZE) != GS_WINDOW_FLAGS_NO_RESIZE);
 
-    GLFWwindow* window = glfwCreateWindow(width, height, title, NULL, NULL);
+    // Get monitor if fullscreen
+    GLFWmonitor* monitor = NULL;
+    if ((window_hints & GS_WINDOW_FLAGS_FULLSCREEN) == GS_WINDOW_FLAGS_FULLSCREEN)
+    {
+        int monitor_count;
+        GLFWmonitor** monitors = glfwGetMonitors(&monitor_count);
+        if (monitor_index < monitor_count)
+        {
+            monitor = monitors[monitor_index];
+        }
+    }
+
+    GLFWwindow* window = glfwCreateWindow(width, height, title, monitor, NULL);
     if (window == NULL)
     {
         gs_println("Failed to create window.");
@@ -1477,13 +1474,14 @@ void* gs_platform_create_window_internal(const char* title, uint32_t width, uint
     // Callbacks for window
     glfwMakeContextCurrent(window);
     glfwSetKeyCallback(window, &__glfw_key_callback);
+    glfwSetCharCallback(window, &__glfw_char_callback);
     glfwSetMouseButtonCallback(window, &__glfw_mouse_button_callback);
     glfwSetCursorEnterCallback(window, &__glfw_mouse_cursor_enter_callback);
     glfwSetCursorPosCallback(window, &__glfw_mouse_cursor_position_callback);
     glfwSetScrollCallback(window, &__glfw_mouse_scroll_wheel_callback);
 
     // Need to make sure this is ONLY done once.
-    if (gs_slot_array_empty(gs_engine_subsystem(platform)->windows))
+    if (gs_slot_array_empty(gs_subsystem(platform)->windows))
     {
         if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
         {
@@ -1491,11 +1489,15 @@ void* gs_platform_create_window_internal(const char* title, uint32_t width, uint
             return NULL;
         }
 
-        switch (gs_engine_subsystem(platform)->settings.video.driver)
+        switch (gs_subsystem(platform)->settings.video.driver)
         {
             case GS_PLATFORM_VIDEO_DRIVER_TYPE_OPENGL: 
             {
                 gs_println("OpenGL Version: %s", glGetString(GL_VERSION));
+                if (gs_subsystem(platform)->settings.video.graphics.debug)
+                {
+                    glDebugMessageCallback(__gs_platform_gl_debug, NULL);
+                }
             } break;
 
             default: break;
@@ -1505,30 +1507,38 @@ void* gs_platform_create_window_internal(const char* title, uint32_t width, uint
     return window;
 }
 
-void gs_platform_set_dropped_files_callback(uint32_t handle, gs_dropped_files_callback_t cb)
+// Platform callbacks
+GS_API_DECL void gs_platform_set_dropped_files_callback(uint32_t handle, gs_dropped_files_callback_t cb)
 {
-    gs_platform_t* platform = gs_engine_subsystem(platform);
+    gs_platform_t* platform = gs_subsystem(platform);
     GLFWwindow* win = __glfw_window_from_handle(platform, handle);
     glfwSetDropCallback(win, (GLFWdropfun)cb);
 }
 
-void  gs_platform_set_window_close_callback(uint32_t handle, gs_window_close_callback_t cb)
+GS_API_DECL void gs_platform_set_window_close_callback(uint32_t handle, gs_window_close_callback_t cb)
 {
-    gs_platform_t* platform = gs_engine_subsystem(platform);
+    gs_platform_t* platform = gs_subsystem(platform);
     GLFWwindow* win = __glfw_window_from_handle(platform, handle);
     glfwSetWindowCloseCallback(win, (GLFWwindowclosefun)cb);
 }
 
-void gs_platform_set_character_callback(uint32_t handle, gs_character_callback_t cb)
+GS_API_DECL void gs_platform_set_character_callback(uint32_t handle, gs_character_callback_t cb)
 {
-    gs_platform_t* platform = gs_engine_subsystem(platform);
+    gs_platform_t* platform = gs_subsystem(platform);
     GLFWwindow* win = __glfw_window_from_handle(platform, handle);
     glfwSetCharCallback(win, (GLFWcharfun)cb);
 }
 
+GS_API_DECL void gs_platform_set_framebuffer_resize_callback(uint32_t handle, gs_framebuffer_resize_callback_t cb)
+{
+    gs_platform_t* platform = gs_subsystem(platform);
+    GLFWwindow* win = __glfw_window_from_handle(platform, handle);
+    glfwSetFramebufferSizeCallback(win, (GLFWframebuffersizefun)cb);
+}
+
 void gs_platform_mouse_set_position(uint32_t handle, float x, float y)
 {
-    struct gs_platform_t* platform = gs_engine_subsystem(platform);
+    struct gs_platform_t* platform = gs_subsystem(platform);
     GLFWwindow* win = __glfw_window_from_handle(platform, handle);
     glfwSetCursorPos(win, x, y);
 }
@@ -1536,7 +1546,7 @@ void gs_platform_mouse_set_position(uint32_t handle, float x, float y)
 void* gs_platform_raw_window_handle(uint32_t handle)
 {
     // Grab instance of platform from engine
-    gs_platform_t* platform = gs_engine_subsystem(platform);
+    gs_platform_t* platform = gs_subsystem(platform);
 
     // Grab window from handle
     GLFWwindow* win = __glfw_window_from_handle(platform, handle);
@@ -1546,7 +1556,7 @@ void* gs_platform_raw_window_handle(uint32_t handle)
 void gs_platform_window_swap_buffer(uint32_t handle)
 {
     // Grab instance of platform from engine
-    gs_platform_t* platform = gs_engine_subsystem(platform);
+    gs_platform_t* platform = gs_subsystem(platform);
 
     // Grab window from handle
     GLFWwindow* win = __glfw_window_from_handle(platform, handle);
@@ -1555,7 +1565,7 @@ void gs_platform_window_swap_buffer(uint32_t handle)
 
 gs_vec2 gs_platform_window_sizev(uint32_t handle)
 {
-    GLFWwindow* win = __glfw_window_from_handle(gs_engine_subsystem(platform), handle);
+    GLFWwindow* win = __glfw_window_from_handle(gs_subsystem(platform), handle);
     int32_t w, h;
     glfwGetWindowSize(win, &w, &h);
     return gs_v2((float)w, (float)h);
@@ -1563,13 +1573,13 @@ gs_vec2 gs_platform_window_sizev(uint32_t handle)
 
 void gs_platform_window_size(uint32_t handle, uint32_t* w, uint32_t* h)
 {
-    GLFWwindow* win = __glfw_window_from_handle(gs_engine_instance()->ctx.platform, handle);
+    GLFWwindow* win = __glfw_window_from_handle(gs_instance()->ctx.platform, handle);
     glfwGetWindowSize(win, (int32_t*)w, (int32_t*)h);
 }
 
 uint32_t gs_platform_window_width(uint32_t handle)
 {
-    GLFWwindow* win = __glfw_window_from_handle(gs_engine_instance()->ctx.platform, handle);
+    GLFWwindow* win = __glfw_window_from_handle(gs_instance()->ctx.platform, handle);
     int32_t w, h;
     glfwGetWindowSize(win, &w, &h);
     return w;
@@ -1577,27 +1587,82 @@ uint32_t gs_platform_window_width(uint32_t handle)
 
 uint32_t gs_platform_window_height(uint32_t handle)
 {
-    GLFWwindow* win = __glfw_window_from_handle(gs_engine_instance()->ctx.platform, handle);
+    GLFWwindow* win = __glfw_window_from_handle(gs_instance()->ctx.platform, handle);
     int32_t w, h;
     glfwGetWindowSize(win, &w, &h);
     return h;
 }
 
+bool32_t gs_platform_window_fullscreen(uint32_t handle)
+{
+    GLFWwindow* win = __glfw_window_from_handle(gs_subsystem(platform), handle);
+    return glfwGetWindowMonitor(win) != NULL;
+}
+
+void gs_platform_window_position(uint32_t handle, uint32_t* x, uint32_t* y)
+{
+    GLFWwindow* win = __glfw_window_from_handle(gs_instance()->ctx.platform, handle);
+    glfwGetWindowPos(win, (int32_t*)x, (int32_t*)y);
+}
+
+gs_vec2 gs_platform_window_positionv(uint32_t handle)
+{
+    GLFWwindow* win = __glfw_window_from_handle(gs_subsystem(platform), handle);
+    int32_t x, y;
+    glfwGetWindowPos(win, &x, &y);
+    return gs_v2((float)x, (float)y);
+}
+
 void gs_platform_set_window_size(uint32_t handle, uint32_t w, uint32_t h)
 {
-    GLFWwindow* win = __glfw_window_from_handle(gs_engine_subsystem(platform), handle);
+    GLFWwindow* win = __glfw_window_from_handle(gs_subsystem(platform), handle);
     glfwSetWindowSize(win, (int32_t)w, (int32_t)h);
 }
 
 void gs_platform_set_window_sizev(uint32_t handle, gs_vec2 v)
 {
-    GLFWwindow* win = __glfw_window_from_handle(gs_engine_subsystem(platform), handle);
+    GLFWwindow* win = __glfw_window_from_handle(gs_subsystem(platform), handle);
     glfwSetWindowSize(win, (uint32_t)v.x, (uint32_t)v.y);
+}
+
+void gs_platform_set_window_fullscreen(uint32_t handle, bool32_t fullscreen)
+{
+    GLFWwindow* win = __glfw_window_from_handle(gs_subsystem(platform), handle);
+    GLFWmonitor* monitor = NULL;
+
+    int32_t x, y, w, h;
+    glfwGetWindowPos(win, &x, &y);
+    glfwGetWindowSize(win, &w, &h);
+
+    if (fullscreen)
+    {
+        uint32_t monitor_index = gs_instance()->ctx.app.monitor_index;
+        int monitor_count;
+        GLFWmonitor** monitors = glfwGetMonitors(&monitor_count);
+        if (monitor_index < monitor_count)
+        {
+            monitor = monitors[monitor_index];
+        }
+    }
+
+    glfwSetWindowMonitor(win, monitor, x, y, w, h, GLFW_DONT_CARE);
+}
+
+void gs_platform_set_window_position(uint32_t handle, uint32_t x, uint32_t y)
+{
+    GLFWwindow* win = __glfw_window_from_handle(gs_subsystem(platform), handle);
+    glfwSetWindowPos(win, (int32_t)x, (int32_t)y);
+}
+
+void gs_platform_set_window_positionv(uint32_t handle, gs_vec2 v)
+{
+    GLFWwindow* win = __glfw_window_from_handle(gs_subsystem(platform), handle);
+    glfwSetWindowPos(win, (int32_t)v.x, (int32_t)v.y);
 }
 
 void gs_platform_framebuffer_size(uint32_t handle, uint32_t* w, uint32_t* h)
 {
-    GLFWwindow* win = __glfw_window_from_handle(gs_engine_subsystem(platform), handle);
+    GLFWwindow* win = __glfw_window_from_handle(gs_subsystem(platform), handle);
     glfwGetFramebufferSize(win, (int32_t*)w, (int32_t*)h);
 }
 
@@ -1624,7 +1689,7 @@ uint32_t gs_platform_framebuffer_height(uint32_t handle)
 
 void gs_platform_set_cursor(uint32_t handle, gs_platform_cursor cursor)
 {
-    gs_platform_t* platform = gs_engine_subsystem(platform);
+    gs_platform_t* platform = gs_subsystem(platform);
     GLFWwindow* win = __glfw_window_from_handle(platform, handle);
     GLFWcursor* cp = ((GLFWcursor*)platform->cursors[(u32)cursor]); 
     glfwSetCursor(win, cp);
@@ -1633,7 +1698,7 @@ void gs_platform_set_cursor(uint32_t handle, gs_platform_cursor cursor)
 void gs_platform_lock_mouse(uint32_t handle, bool32_t lock)
 {
     __gs_input()->mouse.locked = lock;
-    gs_platform_t* platform = gs_engine_subsystem(platform);
+    gs_platform_t* platform = gs_subsystem(platform);
     GLFWwindow* win = __glfw_window_from_handle(platform, handle);
     glfwSetInputMode(win, GLFW_CURSOR, lock ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL);
 
@@ -1648,9 +1713,9 @@ void gs_platform_lock_mouse(uint32_t handle, bool32_t lock)
 
     int32_t main(int32_t argv, char** argc)
     {
-        gs_engine_t* inst = gs_engine_create(gs_main(argv, argc));
-        while (gs_engine_app()->is_running) {
-            gs_engine_frame();
+        gs_t* inst = gs_create(gs_main(argv, argc));
+        while (gs_app()->is_running) {
+            gs_frame();
         }
         // Free engine
         gs_free(inst);
@@ -1687,7 +1752,7 @@ typedef struct gs_ems_t
 } gs_ems_t;
 
 #define GS_EMS_DATA()\
-    ((gs_ems_t*)(gs_engine_subsystem(platform)->user_data))
+    ((gs_ems_t*)(gs_subsystem(platform)->user_data))
 
 uint32_t gs_platform_key_to_codepoint(gs_platform_keycode key)
 {
@@ -1958,7 +2023,7 @@ gs_platform_keycode gs_platform_codepoint_to_key(uint32_t code)
 EM_BOOL gs_ems_size_changed_cb(int32_t type, const EmscriptenUiEvent* evt, void* user_data)
 {
     gs_println("size changed");
-    gs_platform_t* platform = gs_engine_subsystem(platform);
+    gs_platform_t* platform = gs_subsystem(platform);
     gs_ems_t* ems = (gs_ems_t*)platform->user_data;
     (void)type;
     (void)evt;
@@ -2003,13 +2068,12 @@ EM_BOOL gs_ems_key_cb(int32_t type, const EmscriptenKeyboardEvent* evt, void* us
     gs_evt.key.codepoint = evt->which;
     gs_evt.key.keycode = gs_platform_codepoint_to_key(evt->which);
 
-    // gs_println("codepoint: %zu", evt->which);
-
     switch (type)
     {
         case EMSCRIPTEN_EVENT_KEYPRESS:
         {
-            gs_evt.key.action = GS_PLATFORM_KEY_PRESSED;
+            gs_evt.type = GS_PLATFORM_EVENT_TEXT;
+            gs_evt.text.codepoint = evt->which;
         } break;
 
         case EMSCRIPTEN_EVENT_KEYDOWN: 
@@ -2035,7 +2099,7 @@ EM_BOOL gs_ems_mouse_cb(int32_t type, const EmscriptenMouseEvent* evt, void* use
 {
     (void)user_data;
 
-    gs_platform_t* platform = gs_engine_subsystem(platform);
+    gs_platform_t* platform = gs_subsystem(platform);
     gs_ems_t* ems = GS_EMS_DATA();
 
     gs_platform_mouse_button_code button = GS_MOUSE_LBUTTON;
@@ -2050,25 +2114,28 @@ EM_BOOL gs_ems_mouse_cb(int32_t type, const EmscriptenMouseEvent* evt, void* use
     gs_evt.type = GS_PLATFORM_EVENT_MOUSE;
     gs_evt.mouse.codepoint = evt->button;
     gs_evt.mouse.button = button;
+    bool add = true;
 
     switch (type)
     {
         case EMSCRIPTEN_EVENT_CLICK:
         {
-            gs_evt.mouse.action = GS_PLATFORM_MOUSE_BUTTON_PRESSED;
+            // gs_evt.mouse.action = GS_PLATFORM_MOUSE_BUTTON_PRESSED;
+            // gs_println("EMS_PRESSED");
+            add = false;
         } break;
 
         // Emscripten doesn't register continuous presses, so have to manually store this state
         case EMSCRIPTEN_EVENT_MOUSEDOWN: 
         {
             gs_evt.mouse.action = GS_PLATFORM_MOUSE_BUTTON_DOWN;
-            ems->mouse_down[(int32_t)button] = true; 
+            // ems->mouse_down[(int32_t)button] = true; 
         } break;
 
         case EMSCRIPTEN_EVENT_MOUSEUP: 
         {
             gs_evt.mouse.action = GS_PLATFORM_MOUSE_BUTTON_RELEASED;
-            ems->mouse_down[(int32_t)button] = false; 
+            // ems->mouse_down[(int32_t)button] = false; 
         } break;
 
         case EMSCRIPTEN_EVENT_MOUSEMOVE:
@@ -2085,18 +2152,22 @@ EM_BOOL gs_ems_mouse_cb(int32_t type, const EmscriptenMouseEvent* evt, void* use
         {
             gs_evt.mouse.action = GS_PLATFORM_MOUSE_ENTER;
             // Release all buttons
+            /*
             ems->mouse_down[0] = false;
             ems->mouse_down[1] = false;
             ems->mouse_down[2] = false;
+            */
         } break;
 
         case EMSCRIPTEN_EVENT_MOUSELEAVE:
         {
             gs_evt.mouse.action = GS_PLATFORM_MOUSE_LEAVE;
             // Release all buttons
+            /*
             ems->mouse_down[0] = false;
             ems->mouse_down[1] = false;
             ems->mouse_down[2] = false;
+            */
         } break;
 
         default:
@@ -2104,7 +2175,7 @@ EM_BOOL gs_ems_mouse_cb(int32_t type, const EmscriptenMouseEvent* evt, void* use
         }break;
     }
 
-    gs_platform_add_event(&gs_evt);
+    if (add) gs_platform_add_event(&gs_evt);
 
     return true;
 }
@@ -2128,7 +2199,7 @@ EM_BOOL gs_ems_pointerlock_cb(int32_t type, const EmscriptenPointerlockChangeEve
 {
     (void)type;
     (void)user_data;
-    gs_platform_t* platform = gs_engine_subsystem(platform);
+    gs_platform_t* platform = gs_subsystem(platform);
     platform->input.mouse.locked = evt->isActive;
     // gs_println("lock: %zu", platform->input.mouse.locked);
 }
@@ -2138,7 +2209,7 @@ gs_platform_init(gs_platform_t* platform)
 {
     gs_println("Initializing Emscripten.");
 
-    gs_app_desc_t* app = gs_engine_app();
+    gs_app_desc_t* app = gs_app();
     platform->user_data = gs_malloc_init(gs_ems_t);
     gs_ems_t* ems = (gs_ems_t*)platform->user_data;
 
@@ -2192,7 +2263,7 @@ gs_platform_init(gs_platform_t* platform)
 GS_API_DECL void                 
 gs_platform_lock_mouse(uint32_t handle, bool32_t lock)
 {
-    gs_platform_t* platform = gs_engine_subsystem(platform);
+    gs_platform_t* platform = gs_subsystem(platform);
     gs_ems_t* ems = (gs_ems_t*)platform->user_data;
     // if (platform->input.mouse.locked == lock) return;
     platform->input.mouse.locked = lock;
@@ -2235,17 +2306,19 @@ gs_platform_process_input(gs_platform_input_t* input)
 {
     gs_ems_t* ems = GS_EMS_DATA();
 
-    // Set mouse buttons
+    // Set mouse buttons 
+    /*
     for (uint32_t i = 0; i < GS_MOUSE_BUTTON_CODE_COUNT; ++i) {
         if (ems->mouse_down[i]) gs_platform_press_mouse_button((gs_platform_mouse_button_code)i);
         else                    gs_platform_release_mouse_button((gs_platform_mouse_button_code)i);
     }
+    */
 
     // Check for pointerlock, because Chrome is retarded.
     EmscriptenPointerlockChangeEvent evt = gs_default_val();
     emscripten_get_pointerlock_status(&evt);
     if (gs_platform_mouse_locked() && !evt.isActive) {
-        gs_engine_subsystem(platform)->input.mouse.locked = false;
+        gs_subsystem(platform)->input.mouse.locked = false;
     }
 }
 
@@ -2253,12 +2326,12 @@ GS_API_DECL void
 gs_platform_mouse_set_position(uint32_t handle, float x, float y)
 {
     // Not sure this is possible...
-    struct gs_platform_t* platform = gs_engine_subsystem(platform);
+    struct gs_platform_t* platform = gs_subsystem(platform);
     platform->input.mouse.position = gs_v2(x, y);
 }
 
 GS_API_DECL void*    
-gs_platform_create_window_internal(const char* title, uint32_t width, uint32_t height)
+gs_platform_create_window_internal(const char* title, uint32_t width, uint32_t height, uint32_t monitor_index)
 {
     // Nothing for now, since we just create this internally...
     return NULL;
@@ -2299,6 +2372,23 @@ gs_platform_window_height(uint32_t handle)
     return (uint32_t)ems->canvas_height;
 }
 
+GS_API_DECL bool32_t
+gs_platform_window_fullscreen(uint32_t handle)
+{
+    return false;
+}
+
+GS_API_DECL void
+gs_platform_window_position(uint32_t handle, uint32_t* x, uint32_t* y)
+{
+}
+
+GS_API_DECL gs_vec2
+gs_platform_window_positionv(uint32_t handle)
+{
+    return gs_v2(0, 0);
+}
+
 GS_API_DECL void     
 gs_platform_set_window_size(uint32_t handle, uint32_t width, uint32_t height)
 {
@@ -2315,6 +2405,21 @@ gs_platform_set_window_sizev(uint32_t handle, gs_vec2 v)
     emscripten_set_canvas_element_size(ems->canvas_name, (uint32_t)v.x, (uint32_t)v.y);
     ems->canvas_width = (uint32_t)v.x;
     ems->canvas_height = (uint32_t)v.y;
+}
+
+GS_API_DECL void
+gs_platform_set_window_fullscreen(uint32_t handle, bool32_t fullscreen)
+{
+}
+
+GS_API_DECL void
+gs_platform_set_window_position(uint32_t handle, uint32_t x, uint32_t y)
+{
+}
+
+GS_API_DECL void
+gs_platform_set_window_positionv(uint32_t handle, gs_vec2 v)
+{
 }
 
 GS_API_DECL void     
@@ -2379,8 +2484,8 @@ gs_platform_framebuffer_height(uint32_t handle)
     int32_t main(int32_t argc, char** argv)
     {
         gs_app_desc_t app = gs_main(argc, argv);
-        gs_engine_create(app);
-        emscripten_set_main_loop(gs_engine_frame, (int32_t)app.frame_rate, true);
+        gs_create(app);
+        emscripten_set_main_loop(gs_frame, (int32_t)app.frame_rate, true);
         return 0;
     }
 #endif // GS_NO_HIJACK_MAIN
@@ -2470,7 +2575,7 @@ typedef struct gs_android_t {
 } gs_android_t;
 
 #define GS_PLATFORM_ANDROID_DATA(...)\
-    ((gs_android_t*)gs_engine_subsystem(platform)->user_data)
+    ((gs_android_t*)gs_subsystem(platform)->user_data)
 
 bool gs_android_should_update(gs_android_t* android)
 {
@@ -2772,7 +2877,7 @@ int32_t gs_android_main_cb(int32_t fd, int32_t events, void* data)
         case GS_ANDROID_MSG_START: {
             gs_println("MSG_START");
             android->state.has_resumed = true;
-            if (gs_engine_instance()) {
+            if (gs_instance()) {
                 gsevt.type = GS_PLATFORM_EVENT_APP;
                 gsevt.app.action = GS_PLATFORM_APP_START;
                 gs_platform_add_event(&gsevt);
@@ -2782,7 +2887,7 @@ int32_t gs_android_main_cb(int32_t fd, int32_t events, void* data)
         case GS_ANDROID_MSG_STOP: {
             gs_println("MSG_STOP");
             android->state.has_resumed = false;
-            if (gs_engine_instance()) {
+            if (gs_instance()) {
                 gsevt.type = GS_PLATFORM_EVENT_APP;
                 gsevt.app.action = GS_PLATFORM_APP_STOP;
                 gs_platform_add_event(&gsevt);
@@ -2792,7 +2897,7 @@ int32_t gs_android_main_cb(int32_t fd, int32_t events, void* data)
         case GS_ANDROID_MSG_RESUME: {
             gs_println("MSG_RESUME");
             android->state.has_resumed = true;
-            if (gs_engine_instance()) {
+            if (gs_instance()) {
                 gsevt.type = GS_PLATFORM_EVENT_APP;
                 gsevt.app.action = GS_PLATFORM_APP_RESUME;
                 gs_platform_add_event(&gsevt);
@@ -2802,7 +2907,7 @@ int32_t gs_android_main_cb(int32_t fd, int32_t events, void* data)
         case GS_ANDROID_MSG_PAUSE: {
             gs_println("MSG_PAUSE");
             android->state.has_resumed = false;
-            if (gs_engine_instance()) {
+            if (gs_instance()) {
                 gsevt.type = GS_PLATFORM_EVENT_APP;
                 gsevt.app.action = GS_PLATFORM_APP_PAUSE;
                 gs_platform_add_event(&gsevt);
@@ -2812,7 +2917,7 @@ int32_t gs_android_main_cb(int32_t fd, int32_t events, void* data)
         case GS_ANDROID_MSG_GAIN_FOCUS: {
             gs_println("MSG_GAIN_FOCUS");
             android->state.has_focus = true;
-            if (gs_engine_instance()) {
+            if (gs_instance()) {
                 gsevt.type = GS_PLATFORM_EVENT_WINDOW;
                 gsevt.app.action = GS_PLATFORM_WINDOW_GAIN_FOCUS;
                 gs_platform_add_event(&gsevt);
@@ -2822,7 +2927,7 @@ int32_t gs_android_main_cb(int32_t fd, int32_t events, void* data)
         case GS_ANDROID_MSG_LOSE_FOCUS: {
             gs_println("MSG_NO_FOCUS");
             android->state.has_focus = false;
-            if (gs_engine_instance()) {
+            if (gs_instance()) {
                 gsevt.type = GS_PLATFORM_EVENT_WINDOW;
                 gsevt.app.action = GS_PLATFORM_WINDOW_LOSE_FOCUS;
                 gs_platform_add_event(&gsevt);
@@ -2831,12 +2936,12 @@ int32_t gs_android_main_cb(int32_t fd, int32_t events, void* data)
 
         case GS_ANDROID_MSG_SET_NATIVE_WINDOW:
         {
-            if (!gs_engine_instance()) {
+            if (!gs_instance()) {
                 gs_println("Creating engine...");
                 gs_app_desc_t app = gs_main(0, NULL);
                 app.android.activity = android;
                 app.android.internal_data_path = android->internal_data_path;
-                gs_engine_create(app);
+                gs_create(app);
                 android->state.has_focus = true;
                 android->state.has_resumed = true;
             }
@@ -2853,7 +2958,7 @@ int32_t gs_android_main_cb(int32_t fd, int32_t events, void* data)
                             gs_android_update_dimensions(android, android->pending.window, true);
                         } else {
                             gs_println("... failed!");
-                            gs_engine_quit();
+                            gs_quit();
                         }
                     }
                 }
@@ -2882,12 +2987,12 @@ int32_t gs_android_main_cb(int32_t fd, int32_t events, void* data)
 
         case GS_ANDROID_MSG_DESTROY: {
             gs_println("MSG_DESTROY");
-            if (gs_engine_instance()) {
+            if (gs_instance()) {
                 gsevt.type = GS_PLATFORM_EVENT_WINDOW;
                 gsevt.app.action = GS_PLATFORM_WINDOW_DESTROY;
                 gs_platform_add_event(&gsevt);
             }
-            gs_engine_quit();
+            gs_quit();
         } break;
 
         default: {
@@ -3030,7 +3135,7 @@ GS_API_DECL void* gs_android_loop(void* arg)
     while (!android->gt.is_thread_stopping)
     {
         if (gs_android_should_update(android)) {
-            gs_engine_frame();
+            gs_frame();
         }
 
         // Process all window/input events as they occur
@@ -3128,9 +3233,9 @@ GS_API_DECL void
 gs_platform_init(gs_platform_t* platform)
 {
     // Get from application platform data
-    gs_android_t* android = (gs_android_t*)gs_engine_app()->android.activity;
+    gs_android_t* android = (gs_android_t*)gs_app()->android.activity;
     gs_assert(android);
-    gs_app_desc_t* app = gs_engine_app();
+    gs_app_desc_t* app = gs_app();
     platform->user_data = android;
     gs_println("Android: Init platform");
     gs_android_init_egl(platform->user_data);
@@ -3199,7 +3304,7 @@ gs_platform_lock_mouse(uint32_t handle, bool32_t lock)
 }
 
 GS_API_DECL void*    
-gs_platform_create_window_internal(const char* title, uint32_t width, uint32_t height)
+gs_platform_create_window_internal(const char* title, uint32_t width, uint32_t height, uint32_t monitor_index)
 {
     return NULL;
 }
@@ -3242,6 +3347,23 @@ gs_platform_window_height(uint32_t handle)
     return android->egl.height;
 }
 
+GS_API_DECL bool32_t
+gs_platform_window_fullscreen(uint32_t handle)
+{
+    return false;
+}
+
+GS_API_DECL void
+gs_platform_window_position(uint32_t handle, uint32_t* x, uint32_t* y)
+{
+}
+
+GS_API_DECL gs_vec2
+gs_platform_window_positionv(uint32_t handle)
+{
+    return gs_v2(0, 0);
+}
+
 GS_API_DECL void     
 gs_platform_set_window_size(uint32_t handle, uint32_t width, uint32_t height)
 {
@@ -3249,6 +3371,21 @@ gs_platform_set_window_size(uint32_t handle, uint32_t width, uint32_t height)
 
 GS_API_DECL void     
 gs_platform_set_window_sizev(uint32_t handle, gs_vec2 v)
+{
+}
+
+GS_API_DECL void
+gs_platform_set_window_fullscreen(uint32_t handle, bool32_t fullscreen)
+{
+}
+
+GS_API_DECL void
+gs_platform_set_window_position(uint32_t handle, uint32_t x, uint32_t y)
+{
+}
+
+GS_API_DECL void
+gs_platform_set_window_positionv(uint32_t handle, gs_vec2 v)
 {
 }
 

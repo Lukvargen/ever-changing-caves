@@ -2,6 +2,7 @@
 #define MAIN_H
 #include <gs/gs.h>
 #include <gs/util/gs_idraw.h>
+#include <gs/util/gs_gui.h>
 #include "shop.h"
 
 
@@ -302,8 +303,12 @@ typedef struct game_data_t
 {
 	gs_command_buffer_t gcb;
 	gs_immediate_draw_t gsi;
+	gs_gui_context_t gs_gui;
+	gs_gui_style_sheet_t stylesheet;
 
 	gs_vec2 camera_pos;
+	
+	gs_mt_rand_t rand;
 
 	// audio
 	gs_handle(gs_audio_source_t) hit_sound_hndl;

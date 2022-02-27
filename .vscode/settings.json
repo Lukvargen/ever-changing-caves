@@ -18,6 +18,7 @@
         "utility": "c",
         "bit": "c",
         "shop.h": "c",
-        "ios": "c"
+        "ios": "c",
+        "system_error": "c"
     }
 }

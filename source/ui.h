@@ -37,7 +37,7 @@ void ui_calculate_size(ui_control_t* control)
         char* token = strtok(text_copy, "\n");
         int i = 0;
         while (token != NULL) {
-            gs_vec2 dims = gs_asset_font_get_text_dimensions(&control->font, token);
+            gs_vec2 dims = gs_asset_font_text_dimensions(&control->font, token, strlen(token));
             if (dims.x > longest_width) {
                 longest_width = dims.x;
             }

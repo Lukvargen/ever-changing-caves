@@ -37,7 +37,7 @@ void get_available_upgrades(game_data_t* gd)
     for (int i = 0; i < SHOP_UPGRADES_SIZE; i++) {
         int upgrades_size = gs_dyn_array_size(gd->shop.all_upgrades);
         if (upgrades_size > 0) {
-            int index = pos_mod(stb_rand(), upgrades_size);
+            int index = pos_mod(gs_rand_gen_long(&gd->rand), upgrades_size);
             
             gd->shop.upgrades_available[i] = gd->shop.all_upgrades[index];
             gd->shop.all_upgrades[index] = gd->shop.all_upgrades[upgrades_size-1];

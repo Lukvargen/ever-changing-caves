@@ -5,8 +5,8 @@
     All Rights Reserved
 =================================================================*/
 
-#ifndef __GS_GRAPHICS_IMPL_H__
-#define __GS_GRAPHICS_IMPL_H__
+#ifndef GS_GRAPHICS_IMPL_H
+#define GS_GRAPHICS_IMPL_H
 
 #ifndef GS_GRAPHICS_IMPL_CUSTOM
     #define GS_GRAPHICS_IMPL_DEFAULT
@@ -19,7 +19,7 @@
 /* Graphics Info Object Query */
 gs_graphics_info_t* gs_graphics_info()
 {
-    return &gs_engine_subsystem(graphics)->info;
+    return &gs_subsystem(graphics)->info;
 }
 
 #endif
@@ -27,9 +27,9 @@ gs_graphics_info_t* gs_graphics_info()
 #if (defined GS_GRAPHICS_IMPL_OPENGL_CORE || defined GS_GRAPHICS_IMPL_OPENGL_ES)
 
 #ifdef GS_GRAPHICS_IMPL_OPENGL_CORE
-    #define CHECK_GL_CORE(__VA_ARGS__) __VA_ARGS__
+    #define CHECK_GL_CORE(...) __VA_ARGS__
 #else
-    #define CHECK_GL_CORE(__VA_ARGS__) gs_empty_instruction(void)
+    #define CHECK_GL_CORE(...) gs_empty_instruction(void)
 #endif
 
 typedef enum gsgl_uniform_type
@@ -45,7 +45,7 @@ typedef enum gsgl_uniform_type
 
 /* Uniform (stores samplers as well as primitive uniforms) */
 typedef struct gsgl_uniform_t {
-    const char* name;               // Name of uniform to find location
+    char name[64];               // Name of uniform to find location
     gsgl_uniform_type type;         // Type of uniform data
     uint32_t location;              // Location of uniform
     size_t size;                    // Total data size of uniform
@@ -56,17 +56,25 @@ typedef struct gsgl_uniform_t {
 // When a user passes in a uniform layout, that handle could then pass to a WHOLE list of uniforms (if describing a struct)
 typedef struct gsgl_uniform_list_t {
     size_t size;                                // Total size of uniform data
-    const char* name;                           // Base name of uniform
+    char name[64];                           // Base name of uniform
     gs_dyn_array(gsgl_uniform_t) uniforms;      // Individual uniforms in list
 } gsgl_uniform_list_t;
 
 typedef struct gsgl_uniform_buffer_t {
-    const char* name;
+    char name[64];
     uint32_t location;
     size_t size;
     uint32_t ubo;
     uint32_t sid;
 } gsgl_uniform_buffer_t;
+
+typedef struct gsgl_storage_buffer_t {
+    char name[64];
+    uint32_t buffer;
+    int32_t access; 
+    size_t size;
+    uint32_t block_idx;
+} gsgl_storage_buffer_t;
 
 /* Pipeline */
 typedef struct gsgl_pipeline_t {
@@ -117,15 +125,16 @@ typedef struct gsgl_data_cache_t
 /* Internal Opengl Data */
 typedef struct gsgl_data_t
 {
-    gs_slot_array(gsgl_shader_t)        shaders;
-    gs_slot_array(gsgl_texture_t)       textures;
-    gs_slot_array(gsgl_buffer_t)        vertex_buffers;
+    gs_slot_array(gsgl_shader_t)         shaders;
+    gs_slot_array(gsgl_texture_t)        textures;
+    gs_slot_array(gsgl_buffer_t)         vertex_buffers;
     gs_slot_array(gsgl_uniform_buffer_t) uniform_buffers;
-    gs_slot_array(gsgl_buffer_t)        index_buffers;
-    gs_slot_array(gsgl_buffer_t)        frame_buffers;
-    gs_slot_array(gsgl_uniform_list_t)  uniforms;
-    gs_slot_array(gsgl_pipeline_t)      pipelines;
-    gs_slot_array(gsgl_render_pass_t)   render_passes;
+    gs_slot_array(gsgl_storage_buffer_t) storage_buffers;
+    gs_slot_array(gsgl_buffer_t)         index_buffers;
+    gs_slot_array(gsgl_buffer_t)         frame_buffers;
+    gs_slot_array(gsgl_uniform_list_t)   uniforms;
+    gs_slot_array(gsgl_pipeline_t)       pipelines;
+    gs_slot_array(gsgl_render_pass_t)    render_passes;
 
     // All the required uniform data for strict aliasing.
     struct {
@@ -172,7 +181,9 @@ void gsgl_pipeline_state()
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
     glBindTexture(GL_TEXTURE_2D, 0);
-    glDisable(GL_SCISSOR_TEST);
+    CHECK_GL_CORE(
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, 0);
+    )
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_STENCIL_TEST);
     glDisable(GL_BLEND);
@@ -544,19 +555,31 @@ void gs_graphics_destroy(gs_graphics_t* graphics)
 
     gsgl_data_t* ogl = (gsgl_data_t*)graphics->user_data;
 
-    // Free all pipeline data
-    if (ogl->pipelines) {
-        for (uint32_t i = 1; i < (uint32_t)gs_slot_array_size(ogl->pipelines); ++i) {
-            gs_dyn_array_free(ogl->pipelines->data[i].layout);
-        }
-    }
+#define OGL_FREE_DATA(SA, T, FUNC)\
+    do {\
+        for (\
+            gs_slot_array_iter it = 1;\
+            gs_slot_array_iter_valid(SA, it);\
+            gs_slot_array_iter_advance(SA, it)\
+        )\
+        {\
+            gs_handle(T) hndl = gs_default_val();\
+            hndl.id = it;\
+            FUNC(hndl);\
+        }\
+    } while (0)
 
-    // Free all render pass data
-    if (ogl->render_passes) {
-        for (uint32_t i = 1; i < (uint32_t)gs_slot_array_size(ogl->render_passes); ++i) {
-            gs_dyn_array_free(ogl->render_passes->data[i].color);
-        }
-    }
+    // Free all gl data 
+    if (ogl->pipelines)         OGL_FREE_DATA(ogl->pipelines, gs_graphics_pipeline_t, gs_graphics_pipeline_destroy); 
+    if (ogl->shaders)           OGL_FREE_DATA(ogl->shaders, gs_graphics_shader_t, gs_graphics_shader_destroy); 
+    if (ogl->vertex_buffers)    OGL_FREE_DATA(ogl->vertex_buffers, gs_graphics_vertex_buffer_t, gs_graphics_vertex_buffer_destroy);
+    if (ogl->index_buffers)     OGL_FREE_DATA(ogl->index_buffers, gs_graphics_index_buffer_t, gs_graphics_index_buffer_destroy); 
+    if (ogl->render_passes)     OGL_FREE_DATA(ogl->render_passes, gs_graphics_render_pass_t, gs_graphics_render_pass_destroy); 
+    if (ogl->frame_buffers)     OGL_FREE_DATA(ogl->frame_buffers, gs_graphics_framebuffer_t, gs_graphics_framebuffer_destroy); 
+    if (ogl->textures)          OGL_FREE_DATA(ogl->textures, gs_graphics_texture_t, gs_graphics_texture_destroy); 
+    if (ogl->uniforms)          OGL_FREE_DATA(ogl->uniforms, gs_graphics_uniform_t, gs_graphics_uniform_destroy); 
+    if (ogl->uniform_buffers)   OGL_FREE_DATA(ogl->uniform_buffers, gs_graphics_uniform_buffer_t, gs_graphics_uniform_buffer_destroy); 
+    // if (ogl->storage_buffers)   OGL_FREE_DATA(ogl->storage_buffers, gs_graphics_storage_buffer_t, gs_graphics_storage_buffer_destroy);
 
     gs_slot_array_free(ogl->shaders);
     gs_slot_array_free(ogl->vertex_buffers);
@@ -567,6 +590,7 @@ void gs_graphics_destroy(gs_graphics_t* graphics)
     gs_slot_array_free(ogl->pipelines);
     gs_slot_array_free(ogl->render_passes);
     gs_slot_array_free(ogl->uniform_buffers);
+    gs_slot_array_free(ogl->storage_buffers);
 
     // Free uniform data array
     gs_dyn_array_free(ogl->uniform_data.mat4);
@@ -596,12 +620,14 @@ void gs_graphics_init(gs_graphics_t* graphics)
     gsgl_pipeline_t pip = gs_default_val();
     gsgl_render_pass_t rp = gs_default_val();
     gsgl_texture_t tex = gs_default_val();
+    gsgl_storage_buffer_t sb = gs_default_val();
 
     gs_slot_array_insert(ogl->uniforms, ul);
     gs_slot_array_insert(ogl->pipelines, pip);
     gs_slot_array_insert(ogl->render_passes, rp);
     gs_slot_array_insert(ogl->uniform_buffers, ub);
     gs_slot_array_insert(ogl->textures, tex);
+    gs_slot_array_insert(ogl->storage_buffers, sb);
 
     // Construct vao then bind
     glGenVertexArrays(1, &ogl->cache.vao);      
@@ -611,11 +637,14 @@ void gs_graphics_init(gs_graphics_t* graphics)
     gsgl_reset_data_cache(&ogl->cache);
 
     // Init info object
-    gs_graphics_info_t* info = &gs_engine_subsystem(graphics)->info;
+    gs_graphics_info_t* info = &gs_subsystem(graphics)->info;
 
     // Major/Minor version
     glGetIntegerv(GL_MAJOR_VERSION, (GLint*)&info->major_version);
     glGetIntegerv(GL_MINOR_VERSION, (GLint*)&info->minor_version);
+
+    // Max texture units
+    glGetIntegerv(GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS, (GLint*)&info->max_texture_units);
 
     // Compute shader info
     CHECK_GL_CORE(
@@ -640,41 +669,93 @@ void gs_graphics_shutdown(gs_graphics_t* graphics)
 {
 }
 
-gsgl_texture_t gl_texture_create_internal(const gs_graphics_texture_desc_t* desc)
+gsgl_texture_t gl_texture_update_internal(const gs_graphics_texture_desc_t* desc, uint32_t hndl)
 {
-     gsgl_data_t* ogl = (gsgl_data_t*)gs_engine_subsystem(graphics)->user_data;
+    gsgl_data_t* ogl = (gsgl_data_t*)gs_subsystem(graphics)->user_data; 
 
     gsgl_texture_t tex = gs_default_val();
+    if (hndl) tex = gs_slot_array_get(ogl->textures, hndl);
     uint32_t width = desc->width;
     uint32_t height = desc->height;
-    void* data = desc->data;
+    void* data = desc->data; 
 
-    // TODO(john): allow for user to specify explicitly whether to allocate texture as 'render buffer storage'
+    if (!hndl)
+    {
+        glGenTextures(1, &tex.id);
+    }
 
-    // Construct 'normal' texture
-    glGenTextures(1, &tex.id);
     glBindTexture(GL_TEXTURE_2D, tex.id);
 
-    // Construct texture based on appropriate format
-    switch(desc->format) 
+    if (tex.desc.width * tex.desc.height < width * height) 
     {
-        case GS_GRAPHICS_TEXTURE_FORMAT_A8:                 glTexImage2D(GL_TEXTURE_2D, 0, GL_ALPHA, width, height, 0, GL_ALPHA, GL_UNSIGNED_BYTE, data); break;
-        case GS_GRAPHICS_TEXTURE_FORMAT_R8:                 glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, width, height, 0, GL_RED, GL_UNSIGNED_BYTE, data); break;
-        case GS_GRAPHICS_TEXTURE_FORMAT_RGB8:               glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data); break;
-        case GS_GRAPHICS_TEXTURE_FORMAT_RGBA8:              glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data); break;
-        case GS_GRAPHICS_TEXTURE_FORMAT_RGBA16F:            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, width, height, 0, GL_RGBA, GL_FLOAT, data); break;
-        case GS_GRAPHICS_TEXTURE_FORMAT_RGBA32F:            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_RGBA, GL_FLOAT, data); break;
-        case GS_GRAPHICS_TEXTURE_FORMAT_DEPTH8:             glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, width, height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, data); break;
-        case GS_GRAPHICS_TEXTURE_FORMAT_DEPTH16:            glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT16, width, height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, data); break;              
-        case GS_GRAPHICS_TEXTURE_FORMAT_DEPTH24:            glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24, width, height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, data); break;
-        case GS_GRAPHICS_TEXTURE_FORMAT_DEPTH32F:           glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F, width, height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, data); break;
-        case GS_GRAPHICS_TEXTURE_FORMAT_DEPTH24_STENCIL8:   glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH24_STENCIL8, width, height, 0, GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8, data);
-        case GS_GRAPHICS_TEXTURE_FORMAT_DEPTH32F_STENCIL8:  glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH32F_STENCIL8, width, height, 0, GL_DEPTH_STENCIL, GL_FLOAT_32_UNSIGNED_INT_24_8_REV, data); break;
+        // Construct texture based on appropriate format
+        switch(desc->format) 
+        {
+            case GS_GRAPHICS_TEXTURE_FORMAT_A8:                 
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_ALPHA, width, height, 0, GL_ALPHA, GL_UNSIGNED_BYTE, data); break;
+            case GS_GRAPHICS_TEXTURE_FORMAT_R8:                 
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, width, height, 0, GL_RED, GL_UNSIGNED_BYTE, data); break;
+            case GS_GRAPHICS_TEXTURE_FORMAT_RGB8:               
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data); break;
+            case GS_GRAPHICS_TEXTURE_FORMAT_RGBA8:              
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data); break;
+            case GS_GRAPHICS_TEXTURE_FORMAT_RGBA16F:            
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, width, height, 0, GL_RGBA, GL_FLOAT, data); break;
+            case GS_GRAPHICS_TEXTURE_FORMAT_RGBA32F:            
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_RGBA, GL_FLOAT, data); break;
+            case GS_GRAPHICS_TEXTURE_FORMAT_DEPTH8:             
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, width, height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, data); break;
+            case GS_GRAPHICS_TEXTURE_FORMAT_DEPTH16:            
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT16, width, height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, data); break;              
+            case GS_GRAPHICS_TEXTURE_FORMAT_DEPTH24:            
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24, width, height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, data); break;
+            case GS_GRAPHICS_TEXTURE_FORMAT_DEPTH32F:           
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F, width, height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, data); break;
+            case GS_GRAPHICS_TEXTURE_FORMAT_DEPTH24_STENCIL8:   
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH24_STENCIL8, width, height, 0, GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8, data);
+            case GS_GRAPHICS_TEXTURE_FORMAT_DEPTH32F_STENCIL8:  
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH32F_STENCIL8, width, height, 0, GL_DEPTH_STENCIL, GL_FLOAT_32_UNSIGNED_INT_24_8_REV, data); break;
 
-        // NOTE(john): Because Apple is a shit company, I have to section this off and provide support for 4.1 only features.
-        // case GS_GRAPHICS_TEXTURE_FORMAT_STENCIL8:            glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT8, width, height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, data); break;
-        default: break;
+            // NOTE(john): Because Apple is a shit company, I have to section this off and provide support for 4.1 only features.
+            // case GS_GRAPHICS_TEXTURE_FORMAT_STENCIL8:            glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT8, width, height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, data); break;
+            default: break;
+        }
     }
+    else
+    {
+        // Subimage
+        switch (desc->format)
+        {
+            case GS_GRAPHICS_TEXTURE_FORMAT_A8:                 
+                glTexSubImage2D(GL_TEXTURE_2D, 0, (u32)desc->offset.x, (u32)desc->offset.y, width, height, GL_ALPHA, GL_UNSIGNED_BYTE, data); break;
+            case GS_GRAPHICS_TEXTURE_FORMAT_R8:                 
+                glTexSubImage2D(GL_TEXTURE_2D, 0, (u32)desc->offset.x, (u32)desc->offset.y, width, height, GL_RED, GL_UNSIGNED_BYTE, data); break;
+            case GS_GRAPHICS_TEXTURE_FORMAT_RGB8:               
+                glTexSubImage2D(GL_TEXTURE_2D, 0, (u32)desc->offset.x, (u32)desc->offset.y, width, height, GL_RGB, GL_UNSIGNED_BYTE, data); break;
+            case GS_GRAPHICS_TEXTURE_FORMAT_RGBA8:              
+                glTexSubImage2D(GL_TEXTURE_2D, 0, (u32)desc->offset.x, (u32)desc->offset.y, width, height, GL_RGBA, GL_UNSIGNED_BYTE, data); break;
+            case GS_GRAPHICS_TEXTURE_FORMAT_RGBA16F:            
+                glTexSubImage2D(GL_TEXTURE_2D, 0, (u32)desc->offset.x, (u32)desc->offset.y, width, height, GL_RGBA, GL_FLOAT, data); break;
+            case GS_GRAPHICS_TEXTURE_FORMAT_RGBA32F:            
+                glTexSubImage2D(GL_TEXTURE_2D, 0, (u32)desc->offset.x, (u32)desc->offset.y, width, height, GL_RGBA, GL_FLOAT, data); break;
+            case GS_GRAPHICS_TEXTURE_FORMAT_DEPTH8:             
+                glTexSubImage2D(GL_TEXTURE_2D, 0, (u32)desc->offset.x, (u32)desc->offset.y, width, height, GL_DEPTH_COMPONENT, GL_FLOAT, data); break;
+            case GS_GRAPHICS_TEXTURE_FORMAT_DEPTH16:            
+                glTexSubImage2D(GL_TEXTURE_2D, 0, (u32)desc->offset.x, (u32)desc->offset.y, width, height, GL_DEPTH_COMPONENT, GL_FLOAT, data); break;              
+            case GS_GRAPHICS_TEXTURE_FORMAT_DEPTH24:            
+                glTexSubImage2D(GL_TEXTURE_2D, 0, (u32)desc->offset.x, (u32)desc->offset.y, width, height, GL_DEPTH_COMPONENT, GL_FLOAT, data); break;
+            case GS_GRAPHICS_TEXTURE_FORMAT_DEPTH32F:           
+                glTexSubImage2D(GL_TEXTURE_2D, 0, (u32)desc->offset.x, (u32)desc->offset.y, width, height, GL_DEPTH_COMPONENT, GL_FLOAT, data); break;
+            case GS_GRAPHICS_TEXTURE_FORMAT_DEPTH24_STENCIL8:   
+                glTexSubImage2D(GL_TEXTURE_2D, 0, (u32)desc->offset.x, (u32)desc->offset.y, width, height, GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8, data);
+            case GS_GRAPHICS_TEXTURE_FORMAT_DEPTH32F_STENCIL8:  
+                glTexSubImage2D(GL_TEXTURE_2D, 0, (u32)desc->offset.x, (u32)desc->offset.y, width, height, GL_DEPTH_STENCIL, GL_FLOAT_32_UNSIGNED_INT_24_8_REV, data); break;
+
+            // NOTE(john): Because Apple is a shit company, I have to section this off and provide support for 4.1 only features.
+            // case GS_GRAPHICS_TEXTURE_FORMAT_STENCIL8:            glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT8, width, height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, data); break;
+            default: break;
+        }
+    } 
 
     int32_t mag_filter = desc->mag_filter == GS_GRAPHICS_TEXTURE_FILTER_NEAREST ? GL_NEAREST : GL_LINEAR;
     int32_t min_filter = desc->min_filter == GS_GRAPHICS_TEXTURE_FILTER_NEAREST ? GL_NEAREST : GL_LINEAR;
@@ -718,17 +799,17 @@ gsgl_texture_t gl_texture_create_internal(const gs_graphics_texture_desc_t* desc
 }
 
 /* Resource Creation */
-gs_handle(gs_graphics_texture_t) gs_graphics_texture_create(const gs_graphics_texture_desc_t* desc)
+GS_API_DECL gs_handle(gs_graphics_texture_t) gs_graphics_texture_create(const gs_graphics_texture_desc_t* desc)
 {
-    gsgl_data_t* ogl = (gsgl_data_t*)gs_engine_subsystem(graphics)->user_data;
-    gsgl_texture_t tex = gl_texture_create_internal(desc);
+    gsgl_data_t* ogl = (gsgl_data_t*)gs_subsystem(graphics)->user_data;
+    gsgl_texture_t tex = gl_texture_update_internal(desc, 0);
     // Add texture to internal resource pool and return handle
     return (gs_handle_create(gs_graphics_texture_t, gs_slot_array_insert(ogl->textures, tex)));
 }
 
-gs_handle(gs_graphics_uniform_t) gs_graphics_uniform_create(const gs_graphics_uniform_desc_t* desc)
+GS_API_DECL gs_handle(gs_graphics_uniform_t) gs_graphics_uniform_create(const gs_graphics_uniform_desc_t* desc)
 {
-    gsgl_data_t* ogl = (gsgl_data_t*)gs_engine_subsystem(graphics)->user_data;
+    gsgl_data_t* ogl = (gsgl_data_t*)gs_subsystem(graphics)->user_data;
 
     // Assert if data isn't named
     if (desc->name == NULL) {
@@ -744,7 +825,7 @@ gs_handle(gs_graphics_uniform_t) gs_graphics_uniform_create(const gs_graphics_un
 
     // Construct list for uniform handles
     gsgl_uniform_list_t ul = gs_default_val();
-    ul.name = desc->name;
+    memcpy(ul.name, desc->name, 64);
 
     // Iterate layout, construct individual handles
     for (uint32_t i = 0; i < ct; ++i)
@@ -754,7 +835,7 @@ gs_handle(gs_graphics_uniform_t) gs_graphics_uniform_create(const gs_graphics_un
         // Cache layout
         gs_graphics_uniform_layout_desc_t* layout = &desc->layout[i];
 
-        u.name = layout->fname;
+        memcpy(u.name, layout->fname, 64);
         u.type = gsgl_uniform_type_to_gl_uniform_type(layout->type);
         u.size = gsgl_uniform_data_size_in_bytes(layout->type);
         u.count = layout->count ? layout->count : 1;
@@ -770,9 +851,9 @@ gs_handle(gs_graphics_uniform_t) gs_graphics_uniform_create(const gs_graphics_un
     return gs_handle_create(gs_graphics_uniform_t, gs_slot_array_insert(ogl->uniforms, ul));
 }
 
-gs_handle(gs_graphics_vertex_buffer_t) gs_graphics_vertex_buffer_create(const gs_graphics_vertex_buffer_desc_t* desc)
+GS_API_DECL gs_handle(gs_graphics_vertex_buffer_t) gs_graphics_vertex_buffer_create(const gs_graphics_vertex_buffer_desc_t* desc)
 {
-    gsgl_data_t* ogl = (gsgl_data_t*)gs_engine_subsystem(graphics)->user_data;
+    gsgl_data_t* ogl = (gsgl_data_t*)gs_subsystem(graphics)->user_data;
     gs_handle(gs_graphics_vertex_buffer_t) hndl = gs_default_val();
     gsgl_buffer_t buffer = 0;
 
@@ -791,9 +872,9 @@ gs_handle(gs_graphics_vertex_buffer_t) gs_graphics_vertex_buffer_create(const gs
     return hndl;
 }
 
-gs_handle(gs_graphics_index_buffer_t) gs_graphics_index_buffer_create(const gs_graphics_index_buffer_desc_t* desc)
+GS_API_DECL gs_handle(gs_graphics_index_buffer_t) gs_graphics_index_buffer_create(const gs_graphics_index_buffer_desc_t* desc)
 {
-    gsgl_data_t* ogl = (gsgl_data_t*)gs_engine_subsystem(graphics)->user_data;
+    gsgl_data_t* ogl = (gsgl_data_t*)gs_subsystem(graphics)->user_data;
     gs_handle(gs_graphics_index_buffer_t) hndl = gs_default_val();
     gsgl_buffer_t buffer = 0;
 
@@ -812,19 +893,18 @@ gs_handle(gs_graphics_index_buffer_t) gs_graphics_index_buffer_create(const gs_g
     return hndl;
 }
 
-gs_handle(gs_graphics_uniform_buffer_t) gs_graphics_uniform_buffer_create(const gs_graphics_uniform_buffer_desc_t* desc)
+GS_API_DECL gs_handle(gs_graphics_uniform_buffer_t) gs_graphics_uniform_buffer_create(const gs_graphics_uniform_buffer_desc_t* desc)
 {
-    gsgl_data_t* ogl = (gsgl_data_t*)gs_engine_subsystem(graphics)->user_data;
+    gsgl_data_t* ogl = (gsgl_data_t*)gs_subsystem(graphics)->user_data;
     gs_handle(gs_graphics_uniform_buffer_t) hndl = gs_default_val();
-    gsgl_buffer_t buffer = 0;
 
      // Assert if data isn't named
     if (desc->name == NULL) {
-        gs_println("Warning: Uniform buffer must be named for OpenGL.");
+        gs_println("Warning: Uniform buffer must be named for Opengl.");
     }
 
     gsgl_uniform_buffer_t u = gs_default_val();
-    u.name = desc->name;
+    memcpy(u.name, desc->name, 64);
     u.size = desc->size;
     u.location = UINT32_MAX;
 
@@ -839,9 +919,43 @@ gs_handle(gs_graphics_uniform_buffer_t) gs_graphics_uniform_buffer_create(const 
     return hndl;
 }
 
-gs_handle(gs_graphics_framebuffer_t) gs_graphics_framebuffer_create(const gs_graphics_framebuffer_desc_t* desc)
+GS_API_DECL gs_handle(gs_graphics_storage_buffer_t) gs_graphics_storage_buffer_create(const gs_graphics_storage_buffer_desc_t* desc)
 {
-    gsgl_data_t* ogl = (gsgl_data_t*)gs_engine_subsystem(graphics)->user_data;
+    gsgl_data_t* ogl = (gsgl_data_t*)gs_subsystem(graphics)->user_data;
+    gs_handle(gs_graphics_storage_buffer_t) hndl = gs_default_val();
+    gsgl_storage_buffer_t sbo = gs_default_val();
+
+    if (desc->name == NULL) {
+        gs_println("Warning: Storage buffer must be named for Opengl.");
+    }
+
+    if (desc->usage == GS_GRAPHICS_BUFFER_USAGE_STATIC && !desc->data) {
+        gs_println("Error: Storage buffer desc must contain data when GS_GRAPHICS_BUFFER_USAGE_STATIC set.");
+        gs_assert(false);
+    } 
+
+    glGenBuffers(1, &sbo.buffer); 
+
+    CHECK_GL_CORE(
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, sbo.buffer); 
+        glBufferData(GL_SHADER_STORAGE_BUFFER, desc->size, desc->data, gsgl_buffer_usage_to_gl_enum(desc->usage));
+        glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0); 
+    );
+
+    memcpy(sbo.name, desc->name, 64);
+    sbo.access = desc->access;
+    sbo.size = desc->size;
+    sbo.block_idx = UINT32_MAX;
+
+    hndl = gs_handle_create(gs_graphics_storage_buffer_t, gs_slot_array_insert(ogl->storage_buffers, sbo)); 
+
+    return hndl;
+}
+
+GS_API_DECL gs_handle(gs_graphics_framebuffer_t) gs_graphics_framebuffer_create(const gs_graphics_framebuffer_desc_t* desc)
+{
+    gsgl_data_t* ogl = (gsgl_data_t*)gs_subsystem(graphics)->user_data;
     gs_handle(gs_graphics_framebuffer_t) hndl = gs_default_val();
     gsgl_buffer_t buffer = 0;
     glGenFramebuffers(1, &buffer);
@@ -853,9 +967,9 @@ gs_handle(gs_graphics_framebuffer_t) gs_graphics_framebuffer_create(const gs_gra
 #define GSGL_GRAPHICS_SHADER_PIPELINE_COMPUTE   0x02
 #define GSGL_GRAPHICS_MAX_SID                   128
 
-gs_handle(gs_graphics_shader_t) gs_graphics_shader_create(const gs_graphics_shader_desc_t* desc)
+GS_API_DECL gs_handle(gs_graphics_shader_t) gs_graphics_shader_create(const gs_graphics_shader_desc_t* desc)
 {
-    gsgl_data_t* ogl = (gsgl_data_t*)gs_engine_subsystem(graphics)->user_data;
+    gsgl_data_t* ogl = (gsgl_data_t*)gs_subsystem(graphics)->user_data;
     gsgl_shader_t shader = 0;
     uint32_t pip = 0x00;
 
@@ -979,9 +1093,9 @@ gs_handle(gs_graphics_shader_t) gs_graphics_shader_create(const gs_graphics_shad
     return (gs_handle_create(gs_graphics_shader_t, gs_slot_array_insert(ogl->shaders, shader)));
 }
 
-gs_handle(gs_graphics_render_pass_t) gs_graphics_render_pass_create(const gs_graphics_render_pass_desc_t* desc)
+GS_API_DECL gs_handle(gs_graphics_render_pass_t) gs_graphics_render_pass_create(const gs_graphics_render_pass_desc_t* desc)
 {
-    gsgl_data_t* ogl = (gsgl_data_t*)gs_engine_subsystem(graphics)->user_data;
+    gsgl_data_t* ogl = (gsgl_data_t*)gs_subsystem(graphics)->user_data;
 
     gsgl_render_pass_t pass = gs_default_val();
 
@@ -1001,9 +1115,9 @@ gs_handle(gs_graphics_render_pass_t) gs_graphics_render_pass_create(const gs_gra
     return (gs_handle_create(gs_graphics_render_pass_t, gs_slot_array_insert(ogl->render_passes, pass)));
 }
 
-gs_handle(gs_graphics_pipeline_t) gs_graphics_pipeline_create(const gs_graphics_pipeline_desc_t* desc)
+GS_API_DECL gs_handle(gs_graphics_pipeline_t) gs_graphics_pipeline_create(const gs_graphics_pipeline_desc_t* desc)
 {
-    gsgl_data_t* ogl = (gsgl_data_t*)gs_engine_subsystem(graphics)->user_data;
+    gsgl_data_t* ogl = (gsgl_data_t*)gs_subsystem(graphics)->user_data;
 
     gsgl_pipeline_t pipe = gs_default_val();
 
@@ -1025,46 +1139,224 @@ gs_handle(gs_graphics_pipeline_t) gs_graphics_pipeline_create(const gs_graphics_
     return (gs_handle_create(gs_graphics_pipeline_t, gs_slot_array_insert(ogl->pipelines, pipe)));
 }
 
-/* Resource Destruction */
-void gs_graphics_texture_destroy(gs_handle(gs_graphics_texture_t) hndl)
+// Resource Destruction
+GS_API_DECL void gs_graphics_texture_destroy(gs_handle(gs_graphics_texture_t) hndl)
 {
-    gsgl_data_t* ogl = (gsgl_data_t*)gs_engine_subsystem(graphics)->user_data;
-    if (gs_slot_array_exists(ogl->textures, hndl.id)) {
-        gsgl_texture_t* tex = gs_slot_array_getp(ogl->textures, hndl.id);
-        gs_assert(tex);
-        glDeleteTextures(1, &tex->id);
-        gs_slot_array_erase(ogl->textures, hndl.id);
+    gsgl_data_t* ogl = (gsgl_data_t*)gs_subsystem(graphics)->user_data;
+    gsgl_texture_t* tex = gs_slot_array_getp(ogl->textures, hndl.id);
+    glDeleteTextures(1, &tex->id);
+    gs_slot_array_erase(ogl->textures, hndl.id);
+}
+
+GS_API_DECL void gs_graphics_uniform_destroy(gs_handle(gs_graphics_uniform_t) hndl)
+{
+    gsgl_data_t* ogl = (gsgl_data_t*)gs_subsystem(graphics)->user_data; 
+    gsgl_uniform_list_t* ul = gs_slot_array_getp(ogl->uniforms, hndl.id);
+    gs_dyn_array_free(ul->uniforms);
+    gs_slot_array_erase(ogl->uniforms, hndl.id);
+}
+
+GS_API_DECL void gs_graphics_shader_destroy(gs_handle(gs_graphics_shader_t) hndl)
+{
+    gsgl_data_t* ogl = (gsgl_data_t*)gs_subsystem(graphics)->user_data;
+    glDeleteProgram(gs_slot_array_get(ogl->shaders, hndl.id));
+    gs_slot_array_erase(ogl->shaders, hndl.id);
+}
+
+GS_API_DECL void gs_graphics_vertex_buffer_destroy(gs_handle(gs_graphics_vertex_buffer_t) hndl)
+{
+    gsgl_data_t* ogl = (gsgl_data_t*)gs_subsystem(graphics)->user_data;
+    gsgl_buffer_t buffer = gs_slot_array_get(ogl->vertex_buffers, hndl.id); 
+    glDeleteBuffers(1, &buffer);
+    gs_slot_array_erase(ogl->vertex_buffers, hndl.id);
+}
+
+GS_API_DECL void gs_graphics_index_buffer_destroy(gs_handle(gs_graphics_index_buffer_t) hndl)
+{
+    gsgl_data_t* ogl = (gsgl_data_t*)gs_subsystem(graphics)->user_data;
+    gsgl_buffer_t buffer = gs_slot_array_get(ogl->index_buffers, hndl.id); 
+    glDeleteBuffers(1, &buffer);
+    gs_slot_array_erase(ogl->index_buffers, hndl.id);
+}
+
+GS_API_DECL void gs_graphics_uniform_buffer_destroy(gs_handle(gs_graphics_uniform_buffer_t) hndl)
+{
+    gsgl_data_t* ogl = (gsgl_data_t*)gs_subsystem(graphics)->user_data;
+    gsgl_uniform_buffer_t* u = gs_slot_array_getp(ogl->uniform_buffers, hndl.id);
+
+    // Delete buffer (if needed)
+    glDeleteBuffers(1, &u->ubo);
+
+    // Delete from slot array
+    gs_slot_array_erase(ogl->uniform_buffers, hndl.id);
+}
+
+GS_API_DECL void gs_graphics_framebuffer_destroy(gs_handle(gs_graphics_framebuffer_t) hndl)
+{
+    gsgl_data_t* ogl = (gsgl_data_t*)gs_subsystem(graphics)->user_data;
+    gsgl_buffer_t buffer = gs_slot_array_get(ogl->frame_buffers, hndl.id);
+    glDeleteFramebuffers(1, &buffer);
+    gs_slot_array_erase(ogl->frame_buffers, hndl.id);
+}
+
+GS_API_DECL void gs_graphics_render_pass_destroy(gs_handle(gs_graphics_render_pass_t) hndl)
+{
+    gsgl_data_t* ogl = (gsgl_data_t*)gs_subsystem(graphics)->user_data;
+    gs_slot_array_erase(ogl->render_passes, hndl.id);
+}
+
+GS_API_DECL void gs_graphics_pipeline_destroy(gs_handle(gs_graphics_pipeline_t) hndl)
+{
+    gsgl_data_t* ogl = (gsgl_data_t*)gs_subsystem(graphics)->user_data;
+    gsgl_pipeline_t* pip = gs_slot_array_getp(ogl->pipelines, hndl.id);
+
+    // Free layout
+    gs_dyn_array_free(pip->layout);
+
+    // Erase handles from slot arrays
+    gs_slot_array_erase(ogl->pipelines, hndl.id);
+}
+
+// Resource Query
+GS_API_DECL void gs_graphics_pipeline_desc_query(gs_handle(gs_graphics_pipeline_t) hndl, gs_graphics_pipeline_desc_t* out)
+{
+    if (!out) return;
+
+    gsgl_data_t* ogl = (gsgl_data_t*)gs_subsystem(graphics)->user_data; 
+    gsgl_pipeline_t* pip =  gs_slot_array_getp(ogl->pipelines, hndl.id); 
+
+    // Add states
+    out->blend = pip->blend;
+    out->depth = pip->depth;
+    out->raster = pip->raster;
+    out->stencil = pip->stencil;
+    out->compute = pip->compute;
+
+    // Add layout
+    uint32_t ct = gs_dyn_array_size(pip->layout);
+    for (uint32_t i = 0; i < ct; ++i) {
+        gs_dyn_array_push(out->layout.attrs, pip->layout[i]);
+    } 
+}
+
+GS_API_DECL void gs_graphics_texture_desc_query(gs_handle(gs_graphics_texture_t) hndl, gs_graphics_texture_desc_t* out)
+{
+    if (!out) return;
+
+    gsgl_data_t* ogl = (gsgl_data_t*)gs_subsystem(graphics)->user_data; 
+    gsgl_texture_t* tex = gs_slot_array_getp(ogl->textures, hndl.id);
+
+    // Read back pixels
+    if (out->data && out->read.width && out->read.height)
+    {
+        uint32_t type =  gsgl_texture_format_to_gl_data_type(tex->desc.format);
+        uint32_t format = gsgl_texture_format_to_gl_texture_format(tex->desc.format); 
+        CHECK_GL_CORE(
+			glActiveTexture(GL_TEXTURE0);
+			glGetTextureSubImage(tex->id, 0, out->read.x, out->read.y, 0, out->read.width, out->read.height, 1, format, type, out->read.size, out->data);
+		);
+    } 
+
+    *out = tex->desc; 
+}
+
+// Resource Updates (main thread only) 
+
+GS_API_DECL void gs_graphics_texture_update(gs_handle(gs_graphics_texture_t) hndl, gs_graphics_texture_desc_t* desc)
+{   
+    if (!desc) return;
+
+    gsgl_data_t* ogl = (gsgl_data_t*)gs_subsystem(graphics)->user_data; 
+    gsgl_texture_t* tex = gs_slot_array_getp(ogl->textures, hndl.id); 
+
+    // 
+}
+
+GS_API_DECL void gs_graphics_vertex_buffer_update(gs_handle(gs_graphics_vertex_buffer_t) hndl, gs_graphics_vertex_buffer_desc_t* desc)
+{ 
+    /*
+    void __gs_graphics_update_buffer_internal(gs_command_buffer_t* cb, 
+        uint32_t id, 
+        gs_graphics_buffer_type type,
+        gs_graphics_buffer_usage_type usage, 
+        size_t sz, 
+        size_t offset, 
+        gs_graphics_buffer_update_type update_type,
+        void* data)
+    {
+        // Write command
+        gs_byte_buffer_write(&cb->commands, u32, (u32)GS_OPENGL_OP_REQUEST_BUFFER_UPDATE);
+        cb->num_commands++;
+
+        // Write handle id
+        gs_byte_buffer_write(&cb->commands, uint32_t, id);
+        // Write type
+        gs_byte_buffer_write(&cb->commands, gs_graphics_buffer_type, type);
+        // Write usage
+        gs_byte_buffer_write(&cb->commands, gs_graphics_buffer_usage_type, usage);
+        // Write data size
+        gs_byte_buffer_write(&cb->commands, size_t, sz);
+        // Write data offset
+        gs_byte_buffer_write(&cb->commands, size_t, offset);
+        // Write data update type
+        gs_byte_buffer_write(&cb->commands, gs_graphics_buffer_update_type, update_type);
+        // Write data
+        gs_byte_buffer_write_bulk(&cb->commands, data, sz);
+    } 
+    __gs_graphics_update_buffer_internal(cb, hndl.id, GS_GRAPHICS_BUFFER_VERTEX, desc->usage, desc->size, desc->update.offset, desc->update.type, desc->data);
+    */
+
+    gsgl_data_t* ogl = (gsgl_data_t*)gs_subsystem(graphics)->user_data;
+    gsgl_buffer_t buffer = gs_slot_array_get(ogl->vertex_buffers, hndl.id);
+    glBindBuffer(GL_ARRAY_BUFFER, buffer); 
+    int32_t glusage = gsgl_buffer_usage_to_gl_enum(desc->usage);
+    switch (desc->update.type) 
+    {
+        case GS_GRAPHICS_BUFFER_UPDATE_SUBDATA: glBufferSubData(GL_ARRAY_BUFFER, desc->update.offset, desc->size, desc->data); break;
+        default:                                glBufferData(GL_ARRAY_BUFFER, desc->size, desc->data, glusage); break;
     }
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
 
-// void gs_graphics_buffer_destroy(gs_handle(gs_graphics_buffer_t) hndl)
-// {
-// }
-
-void gs_graphics_shader_destroy(gs_handle(gs_graphics_shader_t) hndl)
+GS_API_DECL void gs_graphics_index_buffer_update(gs_handle(gs_graphics_index_buffer_t) hndl, gs_graphics_index_buffer_desc_t* desc)
 {
-}
+    gsgl_data_t* ogl = (gsgl_data_t*)gs_subsystem(graphics)->user_data;
+    gsgl_buffer_t buffer = gs_slot_array_get(ogl->index_buffers, hndl.id);
+    int32_t glusage = gsgl_buffer_usage_to_gl_enum(desc->usage);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, buffer);
+    switch (desc->update.type) {
+l:
+        case GS_GRAPHICS_BUFFER_UPDATE_SUBDATA: glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, desc->update.offset, desc->size, desc->data); break;
+        default:                                glBufferData(GL_ELEMENT_ARRAY_BUFFER, desc->size, desc->data, glusage); break;
+    }
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+} 
 
-void gs_graphics_render_pass_destroy(gs_handle(gs_graphics_render_pass_t) hndl)
+GS_API_DECL void gs_graphics_storage_buffer_update(gs_handle(gs_graphics_storage_buffer_t) hndl, gs_graphics_storage_buffer_desc_t* desc)
 {
-}
+    gsgl_data_t* ogl = (gsgl_data_t*)gs_subsystem(graphics)->user_data;
+    gsgl_storage_buffer_t* sbo = gs_slot_array_getp(ogl->storage_buffers, hndl.id);
+    if (!sbo)
+    {
+        gs_println("Warning: Storage buffer %zu not found.", hndl.id);
+        return;
+    }
 
-void gs_graphics_pipeline_destroy(gs_handle(gs_graphics_pipeline_t) hndl)
-{
-}
-
-/* Resource Update*/
-void gs_graphics_texture_update(gs_handle(gs_graphics_texture_t) hndl, gs_graphics_texture_desc_t* desc)
-{
-}
-
-// void gs_graphics_buffer_update(gs_handle(gs_graphics_buffer_t) hndl, gs_graphics_buffer_desc_t* desc)
-// {
-// }
+    CHECK_GL_CORE(
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, sbo->buffer); 
+        switch (desc->update.type) 
+        {
+            case GS_GRAPHICS_BUFFER_UPDATE_SUBDATA: glBufferSubData(GL_SHADER_STORAGE_BUFFER, desc->update.offset, desc->size, desc->data); break;
+            default:                                glBufferData(GL_SHADER_STORAGE_BUFFER, desc->size, desc->data, gsgl_buffer_usage_to_gl_enum(desc->usage));
+        }
+        glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+    );
+} 
 
 #define __ogl_push_command(CB, OP_CODE, ...)\
 do {\
-    gsgl_data_t* DATA = (gsgl_data_t*)gs_engine_subsystem(graphics)->user_data;\
+    gsgl_data_t* DATA = (gsgl_data_t*)gs_subsystem(graphics)->user_data;\
     gs_byte_buffer_write(&CB->commands, u32, (u32)OP_CODE);\
     __VA_ARGS__\
     CB->num_commands++;\
@@ -1107,13 +1399,13 @@ void gs_graphics_set_viewport(gs_command_buffer_t* cb, uint32_t x, uint32_t y, u
 }
 
 void gs_graphics_set_view_scissor(gs_command_buffer_t* cb, uint32_t x, uint32_t y, uint32_t w, uint32_t h)
-{
+{ 
     __ogl_push_command(cb, GS_OPENGL_OP_SET_VIEW_SCISSOR, {
         gs_byte_buffer_write(&cb->commands, uint32_t, x);
         gs_byte_buffer_write(&cb->commands, uint32_t, y);
         gs_byte_buffer_write(&cb->commands, uint32_t, w);
         gs_byte_buffer_write(&cb->commands, uint32_t, h);
-    });
+    }); 
 }
 
 void gs_graphics_texture_request_update(gs_command_buffer_t* cb, gs_handle(gs_graphics_texture_t) hndl, gs_graphics_texture_desc_t* desc)
@@ -1182,7 +1474,7 @@ void __gs_graphics_update_buffer_internal(gs_command_buffer_t* cb,
 
 void gs_graphics_vertex_buffer_request_update(gs_command_buffer_t* cb, gs_handle(gs_graphics_vertex_buffer_t) hndl, gs_graphics_vertex_buffer_desc_t* desc)
 {
-    gsgl_data_t* ogl = (gsgl_data_t*)gs_engine_subsystem(graphics)->user_data;
+    gsgl_data_t* ogl = (gsgl_data_t*)gs_subsystem(graphics)->user_data;
 
     // Return if handle not valid
     if (!hndl.id) return;
@@ -1192,7 +1484,7 @@ void gs_graphics_vertex_buffer_request_update(gs_command_buffer_t* cb, gs_handle
 
 void gs_graphics_index_buffer_request_update(gs_command_buffer_t* cb, gs_handle(gs_graphics_index_buffer_t) hndl, gs_graphics_index_buffer_desc_t* desc)
 {
-    gsgl_data_t* ogl = (gsgl_data_t*)gs_engine_subsystem(graphics)->user_data;
+    gsgl_data_t* ogl = (gsgl_data_t*)gs_subsystem(graphics)->user_data;
 
     // Return if handle not valid
     if (!hndl.id) return;
@@ -1202,7 +1494,7 @@ void gs_graphics_index_buffer_request_update(gs_command_buffer_t* cb, gs_handle(
 
 void gs_graphics_uniform_buffer_request_update(gs_command_buffer_t* cb, gs_handle(gs_graphics_uniform_buffer_t) hndl, gs_graphics_uniform_buffer_desc_t* desc)
 {
-    gsgl_data_t* ogl = (gsgl_data_t*)gs_engine_subsystem(graphics)->user_data;
+    gsgl_data_t* ogl = (gsgl_data_t*)gs_subsystem(graphics)->user_data;
 
     // Return if handle not valid
     if (!hndl.id) return;
@@ -1210,9 +1502,17 @@ void gs_graphics_uniform_buffer_request_update(gs_command_buffer_t* cb, gs_handl
     __gs_graphics_update_buffer_internal(cb, hndl.id, GS_GRAPHICS_BUFFER_UNIFORM, desc->usage, desc->size, desc->update.offset, desc->update.type, desc->data);
 }
 
+void gs_graphics_storage_buffer_request_update(gs_command_buffer_t* cb, gs_handle(gs_graphics_storage_buffer_t) hndl, gs_graphics_storage_buffer_desc_t* desc)
+{
+    gsgl_data_t* ogl = (gsgl_data_t*)gs_subsystem(graphics)->user_data;
+
+    // Return if handle not valid
+    if (!hndl.id) return;
+}
+
 void gs_graphics_apply_bindings(gs_command_buffer_t* cb, gs_graphics_bind_desc_t* binds)
 {
-    gsgl_data_t* ogl = (gsgl_data_t*)gs_engine_subsystem(graphics)->user_data;
+    gsgl_data_t* ogl = (gsgl_data_t*)gs_subsystem(graphics)->user_data;
 
     // Increment commands
     gs_byte_buffer_write(&cb->commands, u32, (u32)GS_OPENGL_OP_APPLY_BINDINGS);
@@ -1226,9 +1526,10 @@ void gs_graphics_apply_bindings(gs_command_buffer_t* cb, gs_graphics_bind_desc_t
         uint32_t uct = binds->uniform_buffers.desc ? binds->uniform_buffers.size ? binds->uniform_buffers.size / sizeof(gs_graphics_bind_uniform_buffer_desc_t) : 1 : 0;
         uint32_t pct = binds->uniforms.desc ? binds->uniforms.size ? binds->uniforms.size / sizeof(gs_graphics_bind_uniform_desc_t) : 1 : 0;
         uint32_t ibc = binds->image_buffers.desc ? binds->image_buffers.size ? binds->image_buffers.size / sizeof(gs_graphics_bind_image_buffer_desc_t) : 1 : 0;
+        uint32_t sbc = binds->storage_buffers.desc ? binds->storage_buffers.size ? binds->storage_buffers.size / sizeof(gs_graphics_bind_storage_buffer_desc_t) : 1 : 0;
 
         // Determine total count to write into command buffer
-        uint32_t ct = vct + ict + uct + ibc + pct;
+        uint32_t ct = vct + ict + uct + pct + ibc + sbc;
         gs_byte_buffer_write(&cb->commands, uint32_t, ct);
 
         // Determine if need to clear any previous vertex buffers (if vct != 0)
@@ -1289,6 +1590,17 @@ void gs_graphics_apply_bindings(gs_command_buffer_t* cb, gs_graphics_bind_desc_t
             gs_byte_buffer_write(&cb->commands, uint32_t, decl->binding);
             gs_byte_buffer_write_bulk(&cb->commands, decl->data, sz);
         }
+
+        // Storage buffers
+        CHECK_GL_CORE(
+            for (uint32_t i = 0; i < sbc; ++i)
+            {
+                gs_graphics_bind_storage_buffer_desc_t* decl = &binds->storage_buffers.desc[i];
+                gs_byte_buffer_write(&cb->commands, gs_graphics_bind_type, GS_GRAPHICS_BIND_STORAGE_BUFFER);
+                gs_byte_buffer_write(&cb->commands, uint32_t, decl->buffer.id);
+                gs_byte_buffer_write(&cb->commands, uint32_t, decl->binding);
+            }
+        );
     };
 }
 
@@ -1330,7 +1642,7 @@ void gs_graphics_submit_command_buffer(gs_command_buffer_t* cb)
             - Data packet
     */
 
-    gsgl_data_t* ogl = (gsgl_data_t*)gs_engine_subsystem(graphics)->user_data;
+    gsgl_data_t* ogl = (gsgl_data_t*)gs_subsystem(graphics)->user_data;
 
     // Set read position of buffer to beginning
     gs_byte_buffer_seek_to_beg(&cb->commands);
@@ -1386,12 +1698,15 @@ void gs_graphics_submit_command_buffer(gs_command_buffer_t* cb)
 
             case GS_OPENGL_OP_END_RENDER_PASS:
             {
-                gsgl_data_t* ogl = (gsgl_data_t*)gs_engine_subsystem(graphics)->user_data;
+                gsgl_data_t* ogl = (gsgl_data_t*)gs_subsystem(graphics)->user_data;
                 gsgl_reset_data_cache(&ogl->cache);
 
                 glBindFramebuffer(GL_FRAMEBUFFER, 0);
                 glBindBuffer(GL_ARRAY_BUFFER, 0);
                 glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+                CHECK_GL_CORE(
+                    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, 0);
+                );
                 glDisable(GL_SCISSOR_TEST);
                 glDisable(GL_DEPTH_TEST);
                 glDisable(GL_STENCIL_TEST);
@@ -1443,7 +1758,7 @@ void gs_graphics_submit_command_buffer(gs_command_buffer_t* cb)
                 gs_byte_buffer_readc(&cb->commands, uint32_t, x);
                 gs_byte_buffer_readc(&cb->commands, uint32_t, y);
                 gs_byte_buffer_readc(&cb->commands, uint32_t, w);
-                gs_byte_buffer_readc(&cb->commands, uint32_t, h);
+                gs_byte_buffer_readc(&cb->commands, uint32_t, h); 
 
                 glEnable(GL_SCISSOR_TEST);
                 glScissor(x, y, w, h);
@@ -1721,7 +2036,7 @@ void gs_graphics_submit_command_buffer(gs_command_buffer_t* cb)
                             gs_byte_buffer_readc(&cb->commands, size_t, range_size);
 
                             // Check buffer id. If invalid, then we can't operate, and instead just need to pass over the data.
-                            if (!id || !gs_slot_array_exists(ogl->uniforms, id)) {
+                            if (!id || !gs_slot_array_exists(ogl->uniform_buffers, id)) {
                                 gs_timed_action(60, {
                                     gs_println("Warning:Bind Uniform Buffer:Uniform %d does not exist.", id);
                                 });
@@ -1773,6 +2088,77 @@ void gs_graphics_submit_command_buffer(gs_command_buffer_t* cb)
                             }
 
                             glBindBufferRange(GL_UNIFORM_BUFFER, binding, u->ubo, range_offset, range_size ? range_size : u->size);
+
+                        } break;
+
+                        case GS_GRAPHICS_BIND_STORAGE_BUFFER:
+                        {
+                            gs_byte_buffer_readc(&cb->commands, uint32_t, sb_slot_id);
+                            gs_byte_buffer_readc(&cb->commands, uint32_t, binding);
+
+                            // Grab storage buffer from id
+                            if (!sb_slot_id || !gs_slot_array_exists(ogl->storage_buffers, sb_slot_id)) {
+                                gs_timed_action(60, {
+                                    gs_println("Warning:Bind Storage Buffer:Storage Buffer %d does not exist.", sb_slot_id);
+                                });
+                                continue;
+                            }
+
+                            // Grab currently bound pipeline (TODO(john): assert if this isn't valid)
+                            if (!ogl->cache.pipeline.id || !gs_slot_array_exists(ogl->pipelines, ogl->cache.pipeline.id)){
+                                gs_timed_action(60, {
+                                    gs_println("Warning:Bind Storage Buffer:Pipeline %d does not exist or is not bound.", ogl->cache.pipeline.id);
+                                });
+                                continue;
+                            }
+
+                            gsgl_pipeline_t* pip = gs_slot_array_getp(ogl->pipelines, ogl->cache.pipeline.id);
+
+                            gsgl_storage_buffer_t* sbo = gs_slot_array_getp(ogl->storage_buffers, sb_slot_id); 
+
+                            // Get bound shader from pipeline (either compute or raster)
+                            uint32_t sid = pip->compute.shader.id ? pip->compute.shader.id : pip->raster.shader.id;
+
+                            if (!sid || !gs_slot_array_exists(ogl->shaders, sid)) {
+                                gs_timed_action(60, {
+                                    gs_println("Warning:Bind Uniform Buffer:Shader %d does not exist.", sid);
+                                });
+                                continue;
+                            }
+
+                            gsgl_shader_t shader = gs_slot_array_get(ogl->shaders, sid);
+
+                            static uint32_t location = UINT32_MAX;
+
+                            if ((sbo->block_idx == UINT32_MAX && sbo->block_idx != UINT32_MAX - 1)) 
+                            {
+                                // Get uniform location based on name and bound shader
+                                CHECK_GL_CORE(
+                                    sbo->block_idx = glGetProgramResourceIndex(shader, GL_SHADER_STORAGE_BLOCK, sbo->name ? sbo->name : "__EMPTY_BUFFER_NAME"); 
+                                    int32_t params[1];
+                                    GLenum props[1] = {GL_BUFFER_BINDING};
+                                    glGetProgramResourceiv(shader, GL_SHADER_STORAGE_BLOCK, sbo->block_idx, 1, props, 1, NULL, params);
+                                    location = (uint32_t)params[0];
+                                );
+
+                                if (sbo->block_idx >= UINT32_MAX) {
+                                    gs_println("Warning: Bind Storage Buffer: Buffer not found: \"%s\"", sbo->name);
+                                    sbo->block_idx = UINT32_MAX - 1;
+                                } 
+                            } 
+
+                            if (sbo->block_idx < UINT32_MAX - 1)
+                            {
+                                // Not sure what this actually does atm... 
+                                CHECK_GL_CORE(
+                                    glShaderStorageBlockBinding(shader, sbo->block_idx, location);
+                                );
+                            } 
+
+                            // This is required
+                            CHECK_GL_CORE(
+                                glBindBufferBase(GL_SHADER_STORAGE_BUFFER, binding, sbo->buffer); 
+                            );
 
                         } break;
 
@@ -1926,9 +2312,9 @@ void gs_graphics_submit_command_buffer(gs_command_buffer_t* cb)
                 }
 
                 // Dispatch shader 
-                CHECK_GL_CORE(
-                    glDispatchCompute(num_x_groups, num_y_groups, num_z_groups); 
+                CHECK_GL_CORE( 
                     // Memory barrier (TODO(john): make this specifically set in the pipeline state)
+                    glDispatchCompute(num_x_groups, num_y_groups, num_z_groups); 
                     glMemoryBarrier(GL_ALL_BARRIER_BITS);
                 )
             } break;
@@ -2063,7 +2449,7 @@ void gs_graphics_submit_command_buffer(gs_command_buffer_t* cb)
                 uint32_t format = gsgl_texture_format_to_gl_texture_format(desc.format);
                 uint32_t dt = gsgl_texture_format_to_gl_data_type(desc.format);
                 desc.data = (cb->commands.data + cb->commands.position);
-                *tex = gl_texture_create_internal(&desc);
+                *tex = gl_texture_update_internal(&desc, tex_slot_id);
 
                 // Bind texture
                 // glBindTexture(GL_TEXTURE_2D, tex->id);
@@ -2077,7 +2463,7 @@ void gs_graphics_submit_command_buffer(gs_command_buffer_t* cb)
 
             case GS_OPENGL_OP_REQUEST_BUFFER_UPDATE:
             {
-                gsgl_data_t* ogl = (gsgl_data_t*)gs_engine_subsystem(graphics)->user_data;
+                gsgl_data_t* ogl = (gsgl_data_t*)gs_subsystem(graphics)->user_data;
 
                 // Read handle id
                 gs_byte_buffer_readc(&cb->commands, uint32_t, id);
@@ -2165,5 +2551,5 @@ void gs_graphics_submit_command_buffer(gs_command_buffer_t* cb)
 }
 
 #endif // GS_GRAPHICS_IMPL_OPENGL
-#endif // __GS_GRAPHICS_IMPL_H__
+#endif // GS_GRAPHICS_IMPL_H
 
