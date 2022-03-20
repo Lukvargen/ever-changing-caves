@@ -74,14 +74,24 @@ uint32_t gs_platform_main_window()
 
 /*== Platform Time ==*/
 
-float gs_platform_delta_time()
+GS_API_DECL const gs_platform_time_t* gs_platform_time()
 {
-    return (float)gs_subsystem(platform)->time.delta;
+    return &gs_subsystem(platform)->time;
+}
+
+GS_API_DECL float gs_platform_delta_time()
+{
+    return gs_platform_time()->delta;
+}
+
+GS_API_DECL float gs_platform_frame_time()
+{
+    return gs_platform_time()->frame;
 }
 
 /*== Platform UUID ==*/
 
-struct gs_uuid_t gs_platform_uuid_generate()
+GS_API_DECL struct gs_uuid_t gs_platform_uuid_generate()
 {
     gs_uuid_t uuid;
 
@@ -159,6 +169,12 @@ uint32_t gs_platform_uuid_hash(const gs_uuid_t* uuid)
     (&gs_subsystem(platform)->input)
 
 /*=== Platform Input ===*/
+
+GS_API_DECL gs_platform_input_t* gs_platform_input()
+{
+    return &gs_subsystem(platform)->input;
+}
+
 void gs_platform_update_input(gs_platform_input_t* input)
 {
     // Update all input and mouse keys from previous frame
@@ -336,6 +352,8 @@ void gs_platform_update(gs_platform_t* platform)
 
     // Poll all events
     gs_platform_poll_all_events();
+
+    gs_platform_update_internal(platform);
 }
 
 bool gs_platform_poll_events(gs_platform_event_t* evt, bool32_t consume)
@@ -463,6 +481,12 @@ bool gs_platform_mouse_released(gs_platform_mouse_button_code code)
 {
     gs_platform_input_t* input = __gs_input();
     return (gs_platform_was_mouse_down(code) && !gs_platform_mouse_down(code));
+}
+
+bool gs_platform_mouse_moved()
+{
+    gs_platform_input_t* input = __gs_input();
+    return (input->mouse.delta.x != 0.f || input->mouse.delta.y != 0.f);
 }
 
 void gs_platform_mouse_delta(float* x, float* y)
@@ -819,6 +843,45 @@ void gs_platform_init(gs_platform_t* pf)
     pf->cursors[(u32)GS_PLATFORM_CURSOR_SIZE_ALL]   = glfwCreateStandardCursor(GLFW_CROSSHAIR_CURSOR);
     pf->cursors[(u32)GS_PLATFORM_CURSOR_HAND]       = glfwCreateStandardCursor(GLFW_HAND_CURSOR);
     pf->cursors[(u32)GS_PLATFORM_CURSOR_NO]         = glfwCreateStandardCursor(GLFW_ARROW_CURSOR);
+
+    // Poll joysticks here
+    for (uint32_t i = 0; i < GS_PLATFORM_GAMEPAD_MAX; ++i) { 
+        pf->input.gamepads[i].present = glfwJoystickPresent(GLFW_JOYSTICK_1 + i);
+        if (pf->input.gamepads[i].present)
+        {
+            gs_log_success("Controller %d connected.", i);
+        }
+    }
+}
+
+GS_API_DECL void gs_platform_update_internal(gs_platform_t* platform)
+{ 
+    gs_platform_input_t* input = &platform->input;
+
+    // Update all gamepad state
+    for (uint32_t i = 0; i < GS_PLATFORM_GAMEPAD_MAX; ++i) {
+
+        gs_platform_gamepad_t* gp = &input->gamepads[i];
+        gp->present = glfwJoystickPresent(GLFW_JOYSTICK_1 + i);
+
+        if (gp->present)
+        {
+            int32_t count = 0;
+            const float* axes = glfwGetJoystickAxes(GLFW_JOYSTICK_1 + i, &count);
+            count = gs_min(count, GS_PLATFORM_JOYSTICK_AXIS_COUNT);
+
+            for (uint32_t a = 0; a < count; ++a) {
+                gp->axes[a] = axes[a];
+            }
+
+            const uint8_t* buttons = (uint8_t*)glfwGetJoystickButtons(GLFW_JOYSTICK_1 + i, &count);
+            count = gs_min(count, GS_PLATFORM_GAMEPAD_BUTTON_COUNT);
+
+            for (uint32_t b = 0; b < count; ++b) {
+                gp->buttons[b] = buttons[b];
+            } 
+        }
+    }
 }
 
 void gs_platform_shutdown(gs_platform_t* pf)

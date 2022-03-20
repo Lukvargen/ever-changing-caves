@@ -148,12 +148,12 @@ void draw_game(game_data_t* gd)
 		gs_gui_set_style_sheet(&gd->gs_gui, &gd->stylesheet);
 
 
-		if (gs_gui_begin_window_ex(&gd->gs_gui, "Demo Window", gs_gui_rect(250, 250, 250, 250), NULL, GS_GUI_OPT_NOTITLE)) {
+		if (gs_gui_window_begin_ex(&gd->gs_gui, "Demo Window", gs_gui_rect(250, 250, 250, 250), NULL, NULL,GS_GUI_OPT_NOTITLE)) {
 			
 			
 			gs_gui_text(&gd->gs_gui, "TEXT");
 		}
-		gs_gui_end_window(&gd->gs_gui);
+		gs_gui_window_end(&gd->gs_gui);
 
 
 
@@ -391,7 +391,7 @@ void draw_game(game_data_t* gd)
 	}
 
 	// render to frame buffer
-	gs_graphics_begin_render_pass(gcb, gd->rp);
+	gs_graphics_renderpass_begin(gcb, gd->rp);
 		gs_graphics_set_viewport(gcb, 0, 0, RESOLUTION_X, RESOLUTION_Y); // fit the texture
 		gs_graphics_clear(gcb, &fb_clear);
 		draw_tiles(gd, gcb);
@@ -406,11 +406,11 @@ void draw_game(game_data_t* gd)
 		//gs_graphics_set_viewport(gcb, 0, 0, RESOLUTION_X, RESOLUTION_Y);
 		gs_gui_render(&gd->gs_gui, gcb, gs_v2(RESOLUTION_X, RESOLUTION_Y));
 
-	gs_graphics_end_render_pass(gcb);
+	gs_graphics_renderpass_end(gcb);
 	
 
 	// render to backbuffer
-	gs_graphics_begin_render_pass(gcb, GS_GRAPHICS_RENDER_PASS_DEFAULT);
+	gs_graphics_renderpass_begin(gcb, GS_GRAPHICS_RENDER_PASS_DEFAULT);
 		gs_graphics_set_viewport(gcb, 0, 0, ws.x, ws.y); // where to draw
 		gs_graphics_clear(gcb, &clear);
 		// draws quad with frame buffer image
@@ -422,11 +422,11 @@ void draw_game(game_data_t* gd)
 
 		//gs_gui_render(&gd->gs_gui, gcb, gs_v2(RESOLUTION_X, RESOLUTION_Y));
 
-	gs_graphics_end_render_pass(gcb);
+	gs_graphics_renderpass_end(gcb);
 
 	
 	// graphic backend command buffer submit
-	gs_graphics_submit_command_buffer(gcb);
+	gs_graphics_command_buffer_submit(gcb);
 }
 
 void init_tiles(game_data_t* gd)
@@ -587,7 +587,7 @@ void draw_tiles(game_data_t* gd, gs_command_buffer_t* gcb)
 		},
 	});
 	
-	gs_graphics_bind_pipeline(gcb, gd->tile_pip);
+	gs_graphics_pipeline_bind(gcb, gd->tile_pip);
 	gs_graphics_apply_bindings(gcb, &binds);
 	gs_graphics_draw(gcb, &(gs_graphics_draw_desc_t){.start = 0, .count = TILES_SIZE_X*TILES_SIZE_Y*6});
 }
@@ -835,13 +835,13 @@ void init_framebuffer(game_data_t* gd)
 			.wrap_t = GS_GRAPHICS_TEXTURE_WRAP_CLAMP_TO_EDGE,
 			.min_filter = GS_GRAPHICS_TEXTURE_FILTER_NEAREST,
 			.mag_filter = GS_GRAPHICS_TEXTURE_FILTER_NEAREST,
-			.render_target = true
+			//.render_target = true
 		}
 	);
 
 	// construct render pass
-	gd->rp = gs_graphics_render_pass_create(
-		&(gs_graphics_render_pass_desc_t) {
+	gd->rp = gs_graphics_renderpass_create(
+		&(gs_graphics_renderpass_desc_t) {
 			.fbo = gd->fbo,
 			.color = &gd->rt, // color buffer array to bind to frame buffer
 			.color_size = sizeof(gd->rt)
@@ -867,7 +867,7 @@ void draw_particles(game_data_t* gd, gs_command_buffer_t* gcb)
 		.index_buffers = {.desc = &(gs_graphics_bind_index_buffer_desc_t){.buffer = gd->particle_ibo}},
 		.uniforms = {.desc = uniforms, .size = sizeof(uniforms)}
 	};
-	gs_graphics_bind_pipeline(gcb, gd->particle_pip);
+	gs_graphics_pipeline_bind(gcb, gd->particle_pip);
 
 	int emitters_amount = gs_dyn_array_size(gd->particle_emitters);
 	for (int i = 0; i < emitters_amount; i++) {
@@ -937,7 +937,7 @@ void draw_entities(game_data_t* gd, gs_command_buffer_t* gcb)
 		.index_buffers = {.desc = &(gs_graphics_bind_index_buffer_desc_t){.buffer = gd->entity_ibo}},
 		.uniforms = {.desc = uniforms, .size = sizeof(uniforms)}
 	};
-	gs_graphics_bind_pipeline(gcb, gd->entity_pip);
+	gs_graphics_pipeline_bind(gcb, gd->entity_pip);
 
 	// Projectiles
 	tex = circle_16px;
@@ -1240,7 +1240,7 @@ void draw_screen(game_data_t* gd, gs_command_buffer_t* gcb)
 		.index_buffers = {.desc = &(gs_graphics_bind_index_buffer_desc_t){.buffer = gd->screen_ibo}},
 		.uniforms = {.desc = uniforms, .size = sizeof(uniforms)}
 	};
-	gs_graphics_bind_pipeline(gcb, gd->screen_pip);
+	gs_graphics_pipeline_bind(gcb, gd->screen_pip);
 	gs_graphics_apply_bindings(gcb, &binds);
 	gs_graphics_draw(gcb, &(gs_graphics_draw_desc_t){.start = 0, .count = 6});
 

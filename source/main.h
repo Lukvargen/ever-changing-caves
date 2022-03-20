@@ -330,7 +330,7 @@ typedef struct game_data_t
 	gs_handle(gs_graphics_uniform_t) u_tile_model;
 	gs_handle(gs_graphics_uniform_t) u_tile_projection;
 	// framebuffer
-	gs_handle(gs_graphics_render_pass_t) rp;
+	gs_handle(gs_graphics_renderpass_t) rp;
 	gs_handle(gs_graphics_framebuffer_t) fbo;
 	gs_handle(gs_graphics_texture_t)	rt;
 	// screen quad

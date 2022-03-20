@@ -158,8 +158,8 @@ GS_API_DECL void gsi_set_view_scissor(gs_immediate_draw_t* gsi, uint32_t x, uint
 
 // Final Submit / Merge
 GS_API_DECL void gsi_draw(gs_immediate_draw_t* gsi, gs_command_buffer_t* cb);
-GS_API_DECL void gsi_render_pass_submit(gs_immediate_draw_t* gsi, gs_command_buffer_t* cb, gs_color_t clear_color);
-GS_API_DECL void gsi_render_pass_submit_ex(gs_immediate_draw_t* gsi, gs_command_buffer_t* cb, gs_graphics_clear_action_t* action);
+GS_API_DECL void gsi_renderpass_submit(gs_immediate_draw_t* gsi, gs_command_buffer_t* cb, gs_color_t clear_color);
+GS_API_DECL void gsi_renderpass_submit_ex(gs_immediate_draw_t* gsi, gs_command_buffer_t* cb, gs_graphics_clear_action_t* action);
 
 // Core Matrix Functions
 GS_API_DECL void gsi_push_matrix(gs_immediate_draw_t* gsi, gsi_matrix_type type);
@@ -172,7 +172,7 @@ GS_API_DECL void gsi_mul_matrix(gs_immediate_draw_t* gsi, gs_mat4 m);
 GS_API_DECL void gsi_perspective(gs_immediate_draw_t* gsi, float fov, float aspect, float near, float far);
 GS_API_DECL void gsi_ortho(gs_immediate_draw_t* gsi, float left, float right, float bottom, float top, float near, float far);
 GS_API_DECL void gsi_rotatef(gs_immediate_draw_t* gsi, float angle, float x, float y, float z);
-GS_API_DECL void gsi_rotatefv(gs_immediate_draw_t* gsi, float angle, gs_vec3 v);
+GS_API_DECL void gsi_rotatev(gs_immediate_draw_t* gsi, float angle, gs_vec3 v);
 GS_API_DECL void gsi_translatef(gs_immediate_draw_t* gsi, float x, float y, float z);
 GS_API_DECL void gsi_translatev(gs_immediate_draw_t* gsi, gs_vec3 v);
 GS_API_DECL void gsi_scalef(gs_immediate_draw_t* gsi, float x, float y, float z);
@@ -336,7 +336,7 @@ void gs_immediate_draw_static_data_init()
 	tdesc.format = GS_GRAPHICS_TEXTURE_FORMAT_RGBA8;
 	tdesc.min_filter = GS_GRAPHICS_TEXTURE_FILTER_NEAREST;
 	tdesc.mag_filter = GS_GRAPHICS_TEXTURE_FILTER_NEAREST;	
-	tdesc.data = pixels;
+	*tdesc.data = pixels;
 
 	GSI()->tex_default = gs_graphics_texture_create(&tdesc);
 
@@ -433,7 +433,7 @@ void gs_immediate_draw_static_data_init()
    	gs_graphics_texture_desc_t desc = gs_default_val();
    	desc.width = w;
    	desc.height = h;
-   	desc.data = flipmap;
+   	*desc.data = flipmap;
    	desc.format = GS_GRAPHICS_TEXTURE_FORMAT_RGBA8;
    	desc.min_filter = GS_GRAPHICS_TEXTURE_FILTER_NEAREST;
    	desc.mag_filter = GS_GRAPHICS_TEXTURE_FILTER_NEAREST;
@@ -441,7 +441,7 @@ void gs_immediate_draw_static_data_init()
    	// Generate atlas texture for bitmap with bitmap data
    	f->texture.hndl = gs_graphics_texture_create(&desc);
    	f->texture.desc = desc;
-   	f->texture.desc.data = NULL;
+   	*f->texture.desc.data = NULL;
 
     gs_free(compressed_ttf_data);
    	gs_free(buf_decompressed_data);
@@ -518,7 +518,7 @@ void gs_immediate_draw_set_pipeline(gs_immediate_draw_t* gsi)
 
 	// Bind pipeline
 	gs_assert(gs_hash_table_key_exists(GSI()->pipeline_table, gsi->cache.pipeline));
-	gs_graphics_bind_pipeline(&gsi->commands, gs_hash_table_get(GSI()->pipeline_table, gsi->cache.pipeline));
+	gs_graphics_pipeline_bind(&gsi->commands, gs_hash_table_get(GSI()->pipeline_table, gsi->cache.pipeline));
 }
 
 /* Core Vertex Functions */
@@ -970,7 +970,7 @@ void gsi_rotatef(gs_immediate_draw_t* gsi, float angle, float x, float y, float 
 	gsi_mul_matrix(gsi, gs_mat4_rotatev(angle, gs_v3(x, y, z)));
 }
 
-void gsi_rotatefv(gs_immediate_draw_t* gsi, float angle, gs_vec3 v)
+void gsi_rotatev(gs_immediate_draw_t* gsi, float angle, gs_vec3 v)
 {
 	gsi_rotatef(gsi, angle, v.x, v.y, v.z);
 }
@@ -1375,7 +1375,8 @@ GS_API_DECL void gsi_arc(gs_immediate_draw_t* gsi, float cx, float cy, float rad
     // Not a ring
     if (radius_inner <= 0.0f)
     {
-        gsi_circle_sector(gsi, cx, cy, radius_outer, start_angle, end_angle, segments, r, g, b, a, type);
+        // BALLS
+        gsi_circle_sector(gsi, cx, cy, radius_outer, (s32)start_angle, (s32)end_angle, segments, r, g, b, a, type);
         return;
     }
 
@@ -1793,7 +1794,7 @@ void gsi_draw(gs_immediate_draw_t* gsi, gs_command_buffer_t* cb)
 	gsi_reset(gsi);
 }
 
-void gsi_render_pass_submit(gs_immediate_draw_t* gsi, gs_command_buffer_t* cb, gs_color_t c)
+void gsi_renderpass_submit(gs_immediate_draw_t* gsi, gs_command_buffer_t* cb, gs_color_t c)
 {
 	gs_graphics_clear_action_t action = gs_default_val();
 	action.color[0] = (float)c.r / 255.f; 
@@ -1804,24 +1805,24 @@ void gsi_render_pass_submit(gs_immediate_draw_t* gsi, gs_command_buffer_t* cb, g
 	clear.actions = &action;
 	gs_renderpass pass = gs_default_val();
 	gs_vec2 fb = gs_platform_framebuffer_sizev(gsi->window_handle);
-	gs_graphics_begin_render_pass(cb, pass);
+	gs_graphics_renderpass_begin(cb, pass);
 	gs_graphics_set_viewport(cb, 0, 0, (int32_t)fb.x, (int32_t)fb.y);
 	gs_graphics_clear(cb, &clear);
 	gsi_draw(gsi, cb);
-	gs_graphics_end_render_pass(cb);
+	gs_graphics_renderpass_end(cb);
 }
 
-GS_API_DECL void gsi_render_pass_submit_ex(gs_immediate_draw_t* gsi, gs_command_buffer_t* cb, gs_graphics_clear_action_t* action)
+GS_API_DECL void gsi_renderpass_submit_ex(gs_immediate_draw_t* gsi, gs_command_buffer_t* cb, gs_graphics_clear_action_t* action)
 {
     gs_graphics_clear_desc_t clear = gs_default_val();
     clear.actions = action;
 	gs_renderpass pass = gs_default_val();
 	gs_vec2 fb = gs_platform_framebuffer_sizev(gsi->window_handle);
-	gs_graphics_begin_render_pass(cb, pass);
+	gs_graphics_renderpass_begin(cb, pass);
 	gs_graphics_set_viewport(cb, 0, 0, (int32_t)fb.x, (int32_t)fb.y);
 	gs_graphics_clear(cb, &clear);
 	gsi_draw(gsi, cb);
-	gs_graphics_end_render_pass(cb);
+	gs_graphics_renderpass_end(cb);
 }
 
 //-----------------------------------------------------------------------------
@@ -2524,7 +2525,7 @@ GS_API_DECL const char* GSGetDefaultCompressedFontDataTTFBase85()
 	// Begins render pass
 	gs_immediate_begin_pass(gi);
 	{
-		gs_immediate_push_render_pass(cb, rp, actions, actionsz);
+		gs_immediate_push_renderpass(cb, rp, actions, actionsz);
 		{	
 			// Pipeline has a specific layout, in the vertex data, you can push certain vertex information, depending on layout?
 			gs_immediate_push_pipeline(cb, pip);
@@ -2549,7 +2550,7 @@ GS_API_DECL const char* GSGetDefaultCompressedFontDataTTFBase85()
 			}
 			gs_immediate_pop_pipeline(cb);
 		}
-		gs_immediate_pop_render_pass(cb);
+		gs_immediate_pop_renderpass(cb);
 	}
 	gs_immediate_end_pass(cb);
 

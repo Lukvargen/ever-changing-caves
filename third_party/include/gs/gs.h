@@ -1780,6 +1780,7 @@ typedef enum gs_hash_table_entry_state
         __HMV tmp_val;\
         size_t stride;\
         size_t klpvl;\
+        size_t tmp_idx;\
     }*
 
 // Need a way to create a temporary key so I can take the address of it
@@ -1796,7 +1797,7 @@ void __gs_hash_table_init_impl(void** ht, size_t sz)
 #define gs_hash_table_init(__HT, __K, __V)\
     do {\
         size_t entry_sz = sizeof(__K) + sizeof(__V) + sizeof(gs_hash_table_entry_state);\
-        size_t ht_sz = sizeof(__K) + sizeof(__V) + sizeof(void*) + 2 * sizeof(size_t);\
+        size_t ht_sz = sizeof(__K) + sizeof(__V) + sizeof(void*) + 3 * sizeof(size_t);\
         __gs_hash_table_init_impl((void**)&(__HT), ht_sz);\
         memset((__HT), 0, ht_sz);\
         gs_dyn_array_reserve(__HT->data, 2);\
@@ -1947,16 +1948,22 @@ uint32_t gs_hash_table_get_key_index_func(void** data, void* key, size_t key_len
 #define gs_hash_table_get(__HT, __HTK)\
     ((__HT)->tmp_key = (__HTK),\
         (gs_hash_table_geti((__HT),\
-            gs_hash_table_get_key_index_func((void**)&(__HT)->data, (void*)&((__HT)->tmp_key), sizeof((__HT)->tmp_key), sizeof((__HT)->tmp_val), (__HT)->stride, (__HT)->klpvl))))
+            gs_hash_table_get_key_index_func((void**)&(__HT)->data, (void*)&((__HT)->tmp_key),\
+                sizeof((__HT)->tmp_key), sizeof((__HT)->tmp_val), (__HT)->stride, (__HT)->klpvl)))) 
 
 #define gs_hash_table_getp(__HT, __HTK)\
-    ((__HT)->tmp_key = (__HTK),\
-        (&gs_hash_table_geti((__HT),\
-            gs_hash_table_get_key_index_func((void**)&(__HT)->data, (void*)&((__HT)->tmp_key), sizeof((__HT)->tmp_key), sizeof((__HT)->tmp_val), (__HT)->stride, (__HT)->klpvl))))
+    (\
+        (__HT)->tmp_key = (__HTK),\
+        ((__HT)->tmp_idx = (uint32_t)gs_hash_table_get_key_index_func((void**)&(__HT->data), (void*)&(__HT->tmp_key), sizeof(__HT->tmp_key),\
+            sizeof(__HT->tmp_val), __HT->stride, __HT->klpvl)),\
+        ((__HT)->tmp_idx != GS_HASH_TABLE_INVALID_INDEX ? &gs_hash_table_geti((__HT), (__HT)->tmp_idx) : NULL)\
+    )
 
 #define gs_hash_table_key_exists(__HT, __HTK)\
     ((__HT)->tmp_key = (__HTK),\
-        (gs_hash_table_get_key_index_func((void**)&(__HT->data), (void*)&(__HT->tmp_key), sizeof(__HT->tmp_key), sizeof(__HT->tmp_val), __HT->stride, __HT->klpvl) != GS_HASH_TABLE_INVALID_INDEX))
+        (gs_hash_table_get_key_index_func((void**)&(__HT->data), (void*)&(__HT->tmp_key), sizeof(__HT->tmp_key),\
+            sizeof(__HT->tmp_val), __HT->stride, __HT->klpvl) != GS_HASH_TABLE_INVALID_INDEX))
+
 
 #define gs_hash_table_exists(__HT, __HTK)\
 		(__HT && gs_hash_table_key_exists((__HT), (__HTK)))
@@ -2586,7 +2593,7 @@ gs_interp_linear(float a, float b, float t)
 }
 
 gs_inline float
-gs_interp_smooth_step(float a, float b, float t)
+gs_interp_smoothstep(float a, float b, float t)
 {
     return gs_interp_linear(a, b, t * t * (3.0f - 2.0f * t));
 }
@@ -2900,13 +2907,19 @@ gs_vec3_nan(gs_vec3 v)
     return false; 
 }
 
-gs_inline 
-f32 gs_vec3_dist(gs_vec3 a, gs_vec3 b)
-{
+gs_inline
+f32 gs_vec3_dist2(gs_vec3 a, gs_vec3 b)
+{ 
     f32 dx = (a.x - b.x);
     f32 dy = (a.y - b.y);
     f32 dz = (a.z - b.z);
-    return (float)(sqrt(dx * dx + dy * dy + dz * dz));
+    return (dx * dx + dy * dy + dz * dz);
+} 
+
+gs_inline 
+f32 gs_vec3_dist(gs_vec3 a, gs_vec3 b)
+{
+    return sqrt(gs_vec3_dist2(a, b));
 }
 
 gs_inline gs_vec3 
@@ -4320,7 +4333,7 @@ typedef enum gs_token_type
 	GS_TOKEN_RPAREN,
 	GS_TOKEN_LTHAN, 
 	GS_TOKEN_GTHAN, 
-	GS_TOKEN_SEMI_COLON,
+	GS_TOKEN_SEMICOLON,
 	GS_TOKEN_COLON,
 	GS_TOKEN_COMMA, 
 	GS_TOKEN_EQUAL,
@@ -4340,6 +4353,7 @@ typedef enum gs_token_type
 	GS_TOKEN_QMARK, 
 	GS_TOKEN_SPACE, 
     GS_TOKEN_PERCENT,
+    GS_TOKEN_DOLLAR,
 	GS_TOKEN_NEWLINE, 
 	GS_TOKEN_TAB, 
 	GS_TOKEN_UNDERSCORE,
@@ -4349,6 +4363,7 @@ typedef enum gs_token_type
 	GS_TOKEN_SINGLE_QUOTE,
 	GS_TOKEN_DOUBLE_QUOTE,
 	GS_TOKEN_STRING, 
+	GS_TOKEN_PERIOD, 
 	GS_TOKEN_NUMBER
 } gs_token_type;
 
@@ -4414,13 +4429,13 @@ GS_API_DECL gs_token_t gs_lexer_c_next_token(gs_lexer_t* lex);
 
 typedef struct gs_platform_time_t
 {
-    f64 max_fps;
-    f64 current;
-    f64 previous;
-    f64 update;
-    f64 render;
-    f64 delta;
-    f64 frame;
+    float max_fps;
+    float elapsed;
+    float previous;
+    float update;
+    float render;
+    float delta;
+    float frame;
 } gs_platform_time_t;
 
 /*============================================================
@@ -4588,6 +4603,13 @@ typedef enum gs_platform_keycode
     GS_KEYCODE_COUNT 
 } gs_platform_keycode;
 
+#define GS_KEYCODE_LCTRL    GS_KEYCODE_LEFT_CONTROL
+#define GS_KEYCODE_RCTRL    GS_KEYCODE_RIGHT_CONTROL
+#define GS_KEYCODE_LSHIFT   GS_KEYCODE_LEFT_SHIFT
+#define GS_KEYCODE_RSHIFT   GS_KEYCODE_RIGHT_SHIFT
+#define GS_KEYCODE_LALT     GS_KEYCODE_LEFT_ALT
+#define GS_KEYCCODE_RALT    GS_KEYCODE_RIGHT_ALT
+
 typedef enum gs_platform_mouse_button_code
 {
     GS_MOUSE_LBUTTON,
@@ -4606,6 +4628,52 @@ typedef struct gs_platform_mouse_t
     b32 moved_this_frame;
     b32 locked;
 } gs_platform_mouse_t;
+
+enum 
+{
+    GS_PLATFORM_GAMEPAD_BUTTON_A = 0x00,
+    GS_PLATFORM_GAMEPAD_BUTTON_B,
+    GS_PLATFORM_GAMEPAD_BUTTON_X,
+    GS_PLATFORM_GAMEPAD_BUTTON_Y, 
+    GS_PLATFORM_GAMEPAD_BUTTON_LBUMPER, 
+    GS_PLATFORM_GAMEPAD_BUTTON_RBUMPER, 
+    GS_PLATFORM_GAMEPAD_BUTTON_BACK, 
+    GS_PLATFORM_GAMEPAD_BUTTON_START, 
+    GS_PLATFORM_GAMEPAD_BUTTON_GUIDE, 
+    GS_PLATFORM_GAMEPAD_BUTTON_LTHUMB, 
+    GS_PLATFORM_GAMEPAD_BUTTON_RTHUMB, 
+    GS_PLATFORM_GAMEPAD_BUTTON_DPUP, 
+    GS_PLATFORM_GAMEPAD_BUTTON_DPRIGHT, 
+    GS_PLATFORM_GAMEPAD_BUTTON_DPDOWN, 
+    GS_PLATFORM_GAMEPAD_BUTTON_DPLEFT,
+    GS_PLATFORM_GAMEPAD_BUTTON_COUNT
+};
+
+#define GS_PLATFORM_GAMEPAD_BUTTON_LAST     GS_PLATFORM_GAMEPAD_BUTTON_DPLEFT
+#define GS_PLATFORM_GAMEPAD_BUTTON_CROSS    GS_PLATFORM_GAMEPAD_BUTTON_A 
+#define GS_PLATFORM_GAMEPAD_BUTTON_CIRCLE   GS_PLATFORM_GAMEPAD_BUTTON_B
+#define GS_PLATFORM_GAMEPAD_BUTTON_SQUARE   GS_PLATFORM_GAMEPAD_BUTTON_X
+#define GS_PLATFORM_GAMEPAD_BUTTON_TRIANGLE GS_PLATFORM_GAMEPAD_BUTTON_Y 
+
+enum
+{
+    GS_PLATFORM_JOYSTICK_AXIS_LEFT_X = 0x00,
+    GS_PLATFORM_JOYSTICK_AXIS_LEFT_Y,
+    GS_PLATFORM_JOYSTICK_AXIS_RIGHT_X,
+    GS_PLATFORM_JOYSTICK_AXIS_RIGHT_Y,
+    GS_PLATFORM_JOYSTICK_AXIS_LTRIGGER,
+    GS_PLATFORM_JOYSTICK_AXIS_RTRIGGER,
+    GS_PLATFORM_JOYSTICK_AXIS_COUNT
+};
+
+#define GS_PLATFORM_GAMEPAD_MAX     16
+
+typedef struct gs_platform_gamepad_t
+{ 
+    int16_t buttons[GS_PLATFORM_GAMEPAD_BUTTON_COUNT]; 
+    float axes[GS_PLATFORM_JOYSTICK_AXIS_COUNT];
+    int16_t present;
+} gs_platform_gamepad_t; 
 
 #define GS_PLATFORM_MAX_TOUCH   5
 
@@ -4631,6 +4699,7 @@ typedef struct gs_platform_input_t
     b32 prev_key_map[GS_KEYCODE_COUNT];
     gs_platform_mouse_t mouse;
     gs_platform_touch_t touch;
+    gs_platform_gamepad_t gamepads[GS_PLATFORM_GAMEPAD_MAX];
 } gs_platform_input_t;
 
 // Enumeration of all platform types
@@ -4863,17 +4932,20 @@ GS_API_DECL gs_platform_t*  gs_platform_create();
 GS_API_DECL void            gs_platform_destroy(gs_platform_t* platform);
 
  // Platform Init / Update / Shutdown
-GS_API_DECL void  gs_platform_update(gs_platform_t* platform);    // Update platform layer
+GS_API_DECL void gs_platform_update(gs_platform_t* platform);    // Update platform layer 
 
 // Platform Util
+GS_API_DECL const gs_platform_time_t* gs_platform_time();
 GS_API_DECL float  gs_platform_delta_time();
+GS_API_DECL float  gs_platform_frame_time();
 
 // Platform UUID
 GS_API_DECL gs_uuid_t gs_platform_uuid_generate();
 GS_API_DECL void      gs_platform_uuid_to_string(char* temp_buffer, const gs_uuid_t* uuid); // Expects a temp buffer with at least 32 bytes
 GS_API_DECL uint32_t  gs_platform_uuid_hash(const gs_uuid_t* uuid);
 
-// Platform Input
+// Platform Input 
+GS_API_DECL gs_platform_input_t* gs_platform_input();
 GS_API_DECL void      gs_platform_update_input(gs_platform_input_t* input);
 GS_API_DECL void      gs_platform_press_key(gs_platform_keycode code);
 GS_API_DECL void      gs_platform_release_key(gs_platform_keycode code);
@@ -4954,6 +5026,8 @@ GS_API_DECL void       gs_platform_file_extension_default_impl(char* buffer, siz
 
 GS_API_DECL void            gs_platform_init(gs_platform_t* platform);      // Initialize platform layer
 GS_API_DECL void            gs_platform_shutdown(gs_platform_t* platform);  // Shutdown platform layer
+
+GS_API_DECL void gs_platform_update_internal(gs_platform_t* platform);
 
 // Platform Util
 GS_API_DECL double gs_platform_elapsed_time();  // Returns time in ms since initialization of platform
@@ -5243,6 +5317,7 @@ gs_enum_decl(gs_graphics_uniform_type,
     GS_GRAPHICS_UNIFORM_VEC4,
     GS_GRAPHICS_UNIFORM_MAT4,
     GS_GRAPHICS_UNIFORM_SAMPLER2D,
+    GS_GRAPHICS_UNIFORM_SAMPLERCUBE,
     GS_GRAPHICS_UNIFORM_IMAGE2D_RGBA32F,
     GS_GRAPHICS_UNIFORM_BLOCK
 );
@@ -5308,9 +5383,25 @@ gs_enum_decl(gs_graphics_access_type,
     GS_GRAPHICS_ACCESS_READ_ONLY,
     GS_GRAPHICS_ACCESS_WRITE_ONLY,
     GS_GRAPHICS_ACCESS_READ_WRITE
-);
+); 
 
-/* Texture Format */
+//=== Texture ===// 
+typedef enum
+{
+    GS_GRAPHICS_TEXTURE_2D = 0x00, 
+    GS_GRAPHICS_TEXTURE_CUBEMAP
+} gs_graphics_texture_type;
+
+typedef enum 
+{
+    GS_GRAPHICS_TEXTURE_CUBEMAP_POSITIVE_X = 0x00,
+    GS_GRAPHICS_TEXTURE_CUBEMAP_NEGATIVE_X,
+    GS_GRAPHICS_TEXTURE_CUBEMAP_POSITIVE_Y,
+    GS_GRAPHICS_TEXTURE_CUBEMAP_NEGATIVE_Y,
+    GS_GRAPHICS_TEXTURE_CUBEMAP_POSITIVE_Z,
+    GS_GRAPHICS_TEXTURE_CUBEMAP_NEGATIVE_Z
+} gs_graphics_cubemap_face_type;
+
 gs_enum_decl(gs_graphics_texture_format_type,
     GS_GRAPHICS_TEXTURE_FORMAT_RGBA8,
     GS_GRAPHICS_TEXTURE_FORMAT_RGB8,
@@ -5327,7 +5418,6 @@ gs_enum_decl(gs_graphics_texture_format_type,
     GS_GRAPHICS_TEXTURE_FORMAT_STENCIL8
 );
 
-/* Texture Wrapping */
 gs_enum_decl(gs_graphics_texture_wrapping_type,
     GS_GRAPHICS_TEXTURE_WRAP_REPEAT,
     GS_GRAPHICS_TEXTURE_WRAP_MIRRORED_REPEAT,
@@ -5335,13 +5425,12 @@ gs_enum_decl(gs_graphics_texture_wrapping_type,
     GS_GRAPHICS_TEXTURE_WRAP_CLAMP_TO_BORDER
 );
 
-/* Texture Filtering Type */
 gs_enum_decl(gs_graphics_texture_filtering_type,
     GS_GRAPHICS_TEXTURE_FILTER_NEAREST,
     GS_GRAPHICS_TEXTURE_FILTER_LINEAR
 );
 
-/* Render Pass Action Flag */
+//=== Clear ===// 
 gs_enum_decl(gs_graphics_clear_flag,
     GS_GRAPHICS_CLEAR_COLOR = 0x01,
     GS_GRAPHICS_CLEAR_DEPTH = 0x02,
@@ -5354,7 +5443,7 @@ gs_enum_decl(gs_graphics_clear_flag,
     GS_GRAPHICS_CLEAR_DEPTH |\
     GS_GRAPHICS_CLEAR_STENCIL
 
-/* Bind Type */
+//=== Bind Type ===//
 gs_enum_decl(gs_graphics_bind_type,
     GS_GRAPHICS_BIND_VERTEX_BUFFER,
     GS_GRAPHICS_BIND_INDEX_BUFFER,
@@ -5409,7 +5498,7 @@ gs_handle_decl(gs_graphics_uniform_buffer_t);
 gs_handle_decl(gs_graphics_storage_buffer_t);
 gs_handle_decl(gs_graphics_framebuffer_t);
 gs_handle_decl(gs_graphics_uniform_t);
-gs_handle_decl(gs_graphics_render_pass_t);
+gs_handle_decl(gs_graphics_renderpass_t);
 gs_handle_decl(gs_graphics_pipeline_t);
 
 /* Graphics Shader Source Desc */
@@ -5427,26 +5516,30 @@ typedef struct gs_graphics_shader_desc_t
     char name[64];               // Optional (for logging and debugging mainly)
 } gs_graphics_shader_desc_t;
 
+#define GS_GRAPHICS_TEXTURE_DATA_MAX  6
+
 /* Graphics Texture Desc */
 typedef struct gs_graphics_texture_desc_t
 {
-    uint32_t width;                                 // Width of texture in pixels
-    uint32_t height;                                // Height of texture in pixels
+    gs_graphics_texture_type type;
+    uint32_t width;                                 // Width of texture in texels
+    uint32_t height;                                // Height of texture in texels
+    uint32_t depth;                                 // Depth of texture
+    void* data[GS_GRAPHICS_TEXTURE_DATA_MAX];       // Texture data to upload (can be null)
     gs_graphics_texture_format_type format;         // Format of texture data (rgba32, rgba8, rgba32f, r8, depth32f, etc...)
     gs_graphics_texture_wrapping_type wrap_s;       // Wrapping type for s axis of texture
     gs_graphics_texture_wrapping_type wrap_t;       // Wrapping type for t axis of texture
+    gs_graphics_texture_wrapping_type wrap_r;       // Wrapping type for r axis of texture
     gs_graphics_texture_filtering_type min_filter;  // Minification filter for texture
     gs_graphics_texture_filtering_type mag_filter;  // Magnification filter for texture
     gs_graphics_texture_filtering_type mip_filter;  // Mip filter for texture
-    uint32_t num_mips;                              // Number of mips to generate (default 0 is disable mip generation)
-    void* data;                                     // Texture data to upload (can be null)
-    b32 render_target;                              // Default to false (not a render target)
     gs_vec2 offset;                                 // Offset for updates
+    uint32_t num_mips;                              // Number of mips to generate (default 0 is disable mip generation)
     struct {
-        uint32_t x;         // X offset in pixels to start read
-        uint32_t y;         // Y offset in pixels to start read
-        uint32_t width;     // Width in pixels for texture
-        uint32_t height;    // Height in pixels for texture
+        uint32_t x;         // X offset in texels to start read
+        uint32_t y;         // Y offset in texels to start read
+        uint32_t width;     // Width in texels for texture
+        uint32_t height;    // Height in texels for texture
         size_t size;        // Size in bytes for data to be read
     } read;
 } gs_graphics_texture_desc_t;
@@ -5537,14 +5630,14 @@ typedef struct gs_graphics_clear_desc_t
 } gs_graphics_clear_desc_t;
 
 /* Graphics Render Pass Desc */
-typedef struct gs_graphics_render_pass_desc_t
+typedef struct gs_graphics_renderpass_desc_t
 {
     gs_handle(gs_graphics_framebuffer_t) fbo; // Default is set to invalid for backbuffer
     gs_handle(gs_graphics_texture_t)* color;  // Array of color attachments to be bound (useful for MRT, if supported) 
     size_t color_size;                        // Size of color attachment array
     gs_handle(gs_graphics_texture_t) depth;   // Depth attachment to be bound
     gs_handle(gs_graphics_texture_t) stencil; // Depth attachment to be bound
-} gs_graphics_render_pass_desc_t;
+} gs_graphics_renderpass_desc_t;
 
 /* 
     // If you want to write to a color attachment, you have to have a frame buffer attached that isn't the backbuffer
@@ -5709,15 +5802,15 @@ typedef struct gs_graphics_draw_desc_t
     } range;
 } gs_graphics_draw_desc_t;
 
-gs_inline gs_handle(gs_graphics_render_pass_t)
-__gs_render_pass_default_impl() 
+gs_inline gs_handle(gs_graphics_renderpass_t)
+__gs_renderpass_default_impl() 
 {
-    gs_handle(gs_graphics_render_pass_t) hndl = gs_default_val();
+    gs_handle(gs_graphics_renderpass_t) hndl = gs_default_val();
     return hndl;
 }
 
 // Convenience define for default render pass to back buffer
-#define GS_GRAPHICS_RENDER_PASS_DEFAULT (__gs_render_pass_default_impl())
+#define GS_GRAPHICS_RENDER_PASS_DEFAULT (__gs_renderpass_default_impl())
 
 typedef struct gs_graphics_info_t
 {
@@ -5764,7 +5857,7 @@ GS_API_DECL gs_handle(gs_graphics_index_buffer_t)   gs_graphics_index_buffer_cre
 GS_API_DECL gs_handle(gs_graphics_uniform_buffer_t) gs_graphics_uniform_buffer_create(const gs_graphics_uniform_buffer_desc_t* desc);
 GS_API_DECL gs_handle(gs_graphics_storage_buffer_t) gs_graphics_storage_buffer_create(const gs_graphics_storage_buffer_desc_t* desc);
 GS_API_DECL gs_handle(gs_graphics_framebuffer_t)    gs_graphics_framebuffer_create(const gs_graphics_framebuffer_desc_t* desc);
-GS_API_DECL gs_handle(gs_graphics_render_pass_t)    gs_graphics_render_pass_create(const gs_graphics_render_pass_desc_t* desc);
+GS_API_DECL gs_handle(gs_graphics_renderpass_t)    gs_graphics_renderpass_create(const gs_graphics_renderpass_desc_t* desc);
 GS_API_DECL gs_handle(gs_graphics_pipeline_t)       gs_graphics_pipeline_create(const gs_graphics_pipeline_desc_t* desc);
 
 // Resource Destruction
@@ -5776,7 +5869,7 @@ GS_API_DECL void gs_graphics_index_buffer_destroy(gs_handle(gs_graphics_index_bu
 GS_API_DECL void gs_graphics_uniform_buffer_destroy(gs_handle(gs_graphics_uniform_buffer_t) hndl);
 GS_API_DECL void gs_graphics_storage_buffer_destroy(gs_handle(gs_graphics_storage_buffer_t) hndl);
 GS_API_DECL void gs_graphics_framebuffer_destroy(gs_handle(gs_graphics_framebuffer_t) hndl);
-GS_API_DECL void gs_graphics_render_pass_destroy(gs_handle(gs_graphics_render_pass_t) hndl);
+GS_API_DECL void gs_graphics_renderpass_destroy(gs_handle(gs_graphics_renderpass_t) hndl);
 GS_API_DECL void gs_graphics_pipeline_destroy(gs_handle(gs_graphics_pipeline_t) hndl); 
 
 // Resource Queries
@@ -5792,7 +5885,7 @@ GS_API_DECL void gs_graphics_texture_update(gs_handle(gs_graphics_texture_t) hnd
 // Resource Destruction
 GS_API_DECL void gs_graphics_texture_destroy(gs_handle(gs_graphics_texture_t) hndl);
 GS_API_DECL void gs_graphics_shader_destroy(gs_handle(gs_graphics_shader_t) hndl);
-GS_API_DECL void gs_graphics_render_pass_destroy(gs_handle(gs_graphics_render_pass_t) hndl);
+GS_API_DECL void gs_graphics_renderpass_destroy(gs_handle(gs_graphics_renderpass_t) hndl);
 GS_API_DECL void gs_graphics_pipeline_destroy(gs_handle(gs_graphics_pipeline_t) hndl);
 
 // Resource In-Flight Update
@@ -5803,24 +5896,24 @@ GS_API_DECL void gs_graphics_uniform_buffer_request_update(gs_command_buffer_t* 
 GS_API_DECL void gs_graphics_storage_buffer_request_update(gs_command_buffer_t* cb, gs_handle(gs_graphics_storage_buffer_t) hndl, gs_graphics_storage_buffer_desc_t* desc);
 
 // Pipeline / Pass / Bind / Draw
-GS_API_DECL void gs_graphics_begin_render_pass(gs_command_buffer_t* cb, gs_handle(gs_graphics_render_pass_t) hndl);
-GS_API_DECL void gs_graphics_end_render_pass(gs_command_buffer_t* cb);
+GS_API_DECL void gs_graphics_renderpass_begin(gs_command_buffer_t* cb, gs_handle(gs_graphics_renderpass_t) hndl);
+GS_API_DECL void gs_graphics_renderpass_end(gs_command_buffer_t* cb);
 GS_API_DECL void gs_graphics_set_viewport(gs_command_buffer_t* cb, uint32_t x, uint32_t y, uint32_t w, uint32_t h);
 GS_API_DECL void gs_graphics_set_view_scissor(gs_command_buffer_t* cb, uint32_t x, uint32_t y, uint32_t w, uint32_t h);
 GS_API_DECL void gs_graphics_clear(gs_command_buffer_t* cb, gs_graphics_clear_desc_t* desc);
-GS_API_DECL void gs_graphics_bind_pipeline(gs_command_buffer_t* cb, gs_handle(gs_graphics_pipeline_t) hndl);
+GS_API_DECL void gs_graphics_pipeline_bind(gs_command_buffer_t* cb, gs_handle(gs_graphics_pipeline_t) hndl);
 GS_API_DECL void gs_graphics_apply_bindings(gs_command_buffer_t* cb, gs_graphics_bind_desc_t* binds);
 GS_API_DECL void gs_graphics_draw(gs_command_buffer_t* cb, gs_graphics_draw_desc_t* desc);
 GS_API_DECL void gs_graphics_dispatch_compute(gs_command_buffer_t* cb, uint32_t num_x_groups, uint32_t num_y_groups, uint32_t num_z_groups);
 
 // Submission (Main Thread)
-GS_API_DECL void gs_graphics_submit_command_buffer(gs_command_buffer_t* cb);
+GS_API_DECL void gs_graphics_command_buffer_submit(gs_command_buffer_t* cb);
 
 #ifndef GS_NO_SHORT_NAME
     
 typedef gs_handle(gs_graphics_shader_t)         gs_shader;
 typedef gs_handle(gs_graphics_texture_t)        gs_texture;
-typedef gs_handle(gs_graphics_render_pass_t)    gs_renderpass;
+typedef gs_handle(gs_graphics_renderpass_t)     gs_renderpass;
 typedef gs_handle(gs_graphics_framebuffer_t)    gs_framebuffer;
 typedef gs_handle(gs_graphics_pipeline_t)       gs_pipeline;
 typedef gs_handle(gs_graphics_vertex_buffer_t)  gs_vbo;
@@ -6991,7 +7084,7 @@ bool32_t gs_util_load_texture_data_from_memory(const void* memory, size_t sz, in
 {
     // Load texture data
     stbi_set_flip_vertically_on_load(flip_vertically_on_load);
-    *data =  stbi_load_from_memory((const stbi_uc*)memory, (int32_t)sz, (int32_t*)width, (int32_t*)height, (int32_t*)num_comps, STBI_rgb_alpha);
+    *data =  stbi_load_from_memory((const stbi_uc*)memory, (int32_t)sz, (int32_t*)width, (int32_t*)height, (int32_t*)num_comps, 0x00);
     if (!*data) {
         gs_free(*data);
         return false;
@@ -7028,7 +7121,7 @@ bool gs_asset_texture_load_from_file(const char* path, void* out, gs_graphics_te
 
     int32_t comp = 0;
     stbi_set_flip_vertically_on_load(flip_on_load);
-    t->desc.data = (uint8_t*)stbi_load_from_file(f, (int32_t*)&t->desc.width, (int32_t*)&t->desc.height, (int32_t*)&comp, STBI_rgb_alpha);
+    *t->desc.data = (uint8_t*)stbi_load_from_file(f, (int32_t*)&t->desc.width, (int32_t*)&t->desc.height, (int32_t*)&comp, STBI_rgb_alpha);
 
     if (!t->desc.data) {
         fclose(f);
@@ -7038,8 +7131,8 @@ bool gs_asset_texture_load_from_file(const char* path, void* out, gs_graphics_te
     t->hndl = gs_graphics_texture_create(&t->desc);
 
     if (!keep_data) {
-        gs_free(t->desc.data);
-        t->desc.data = NULL;
+        gs_free(*t->desc.data);
+        *t->desc.data = NULL;
     }
 
     fclose(f);
@@ -7087,7 +7180,7 @@ bool gs_asset_texture_load_from_memory(const void* memory, size_t sz, void* out,
 
     if (!keep_data) {
         gs_free(t->desc.data);
-        t->desc.data = NULL;
+        *t->desc.data = NULL;
     }
 
     return true;
@@ -7149,7 +7242,7 @@ bool gs_asset_font_load_from_memory(const void* memory, size_t sz, void* out, ui
     gs_graphics_texture_desc_t desc = gs_default_val();
     desc.width = w;
     desc.height = h;
-    desc.data = flipmap;
+    *desc.data = flipmap;
     desc.format = GS_GRAPHICS_TEXTURE_FORMAT_RGBA8;
     desc.min_filter = GS_GRAPHICS_TEXTURE_FILTER_NEAREST;
     desc.mag_filter = GS_GRAPHICS_TEXTURE_FILTER_NEAREST;
@@ -7157,7 +7250,7 @@ bool gs_asset_font_load_from_memory(const void* memory, size_t sz, void* out, ui
     // Generate atlas texture for bitmap with bitmap data
     f->texture.hndl = gs_graphics_texture_create(&desc);
     f->texture.desc = desc;
-    f->texture.desc.data = NULL;
+    *f->texture.desc.data = NULL;
 
     bool success = false;
     if (v == 0) {
@@ -7635,7 +7728,7 @@ GS_API_DECL const char* gs_token_type_to_str(gs_token_type type)
 		case GS_TOKEN_RPAREN: return gs_to_str(GS_TOKEN_RPAREN); break;
 		case GS_TOKEN_LTHAN: return gs_to_str(GS_TOKEN_LTHAN); break; 
 		case GS_TOKEN_GTHAN: return gs_to_str(GS_TOKEN_GTHAN); break; 
-		case GS_TOKEN_SEMI_COLON: return gs_to_str(GS_TOKEN_SEMI_COLON); break;
+		case GS_TOKEN_SEMICOLON: return gs_to_str(GS_TOKEN_SEMICOLON); break;
 		case GS_TOKEN_COLON: return gs_to_str(GS_TOKEN_COLON); break;
 		case GS_TOKEN_COMMA: return gs_to_str(GS_TOKEN_COMMA); break; 
 		case GS_TOKEN_EQUAL: return gs_to_str(GS_TOKEN_EQUAL); break;
@@ -7653,6 +7746,7 @@ GS_API_DECL const char* gs_token_type_to_str(gs_token_type type)
 		case GS_TOKEN_BSLASH: return gs_to_str(GS_TOKEN_BLASH); break; 
 		case GS_TOKEN_FSLASH: return gs_to_str(GS_TOKEN_FLASH); break; 
 		case GS_TOKEN_QMARK: return gs_to_str(GS_TOKEN_QMARK); break;
+		case GS_TOKEN_DOLLAR: return gs_to_str(GS_TOKEN_DOLLAR); break;
 		case GS_TOKEN_SPACE: return gs_to_str(GS_TOKEN_SPACE); break; 
 		case GS_TOKEN_NEWLINE: return gs_to_str(GS_TOKEN_NEWLINE); break;
 		case GS_TOKEN_TAB: return gs_to_str(GS_TOKEN_TAB); break;
@@ -7699,6 +7793,12 @@ GS_API_DECL void gs_lexer_set_contents(gs_lexer_t* lex, const char* contents)
 GS_API_DECL bool gs_lexer_c_can_lex(gs_lexer_t* lex)
 {
 	return (lex->at && !gs_char_is_null_term(*(lex->at)));
+}
+
+GS_API_DECL void gs_lexer_set_token(gs_lexer_t* lex, gs_token_t token)
+{
+    lex->at = token.text;
+    lex->current_token = token;
 }
 
 GS_API_DECL void gs_lexer_c_eat_white_space(gs_lexer_t* lex)
@@ -7758,7 +7858,7 @@ GS_API_DECL gs_token_t gs_lexer_c_next_token(gs_lexer_t* lex)
 			case ')': {t.type = GS_TOKEN_RPAREN; lex->at++;} break;
 			case '<': {t.type = GS_TOKEN_LTHAN; lex->at++;} break;
 			case '>': {t.type = GS_TOKEN_GTHAN; lex->at++;} break;
-			case ';': {t.type = GS_TOKEN_SEMI_COLON; lex->at++;} break;
+			case ';': {t.type = GS_TOKEN_SEMICOLON; lex->at++;} break;
 			case ':': {t.type = GS_TOKEN_COLON; lex->at++;} break;
 			case ',': {t.type = GS_TOKEN_COMMA; lex->at++;} break;
 			case '=': {t.type = GS_TOKEN_EQUAL; lex->at++;} break;
@@ -7770,15 +7870,49 @@ GS_API_DECL gs_token_t gs_lexer_c_next_token(gs_lexer_t* lex)
 			case '}': {t.type = GS_TOKEN_RBRACE; lex->at++;} break;
 			case '[': {t.type = GS_TOKEN_LBRACKET; lex->at++;} break;
 			case ']': {t.type = GS_TOKEN_RBRACKET; lex->at++;} break;
-			case '-': {t.type = GS_TOKEN_MINUS; lex->at++;} break;
 			case '+': {t.type = GS_TOKEN_PLUS; lex->at++;} break;
 			case '*': {t.type = GS_TOKEN_ASTERISK; lex->at++;} break;
 			case '\\': {t.type = GS_TOKEN_BSLASH; lex->at++;} break;
 			case '?': {t.type = GS_TOKEN_QMARK; lex->at++;} break;
+			case '%': {t.type = GS_TOKEN_PERCENT; lex->at++;} break;
+			case '$': {t.type = GS_TOKEN_DOLLAR; lex->at++;} break;
 			case ' ': {t.type = GS_TOKEN_SPACE; lex->at++;} break;
 			case '\n': {t.type = GS_TOKEN_NEWLINE; lex->at++;} break;
 			case '\r': {t.type = GS_TOKEN_NEWLINE; lex->at++;} break;
 			case '\t': {t.type = GS_TOKEN_TAB; lex->at++;} break;
+			case '.': {t.type = GS_TOKEN_PERIOD; lex->at++;} break; 
+
+            case '-':
+            {
+                if (lex->at[1] && !gs_char_is_numeric(lex->at[1]))
+                {
+                    t.type = GS_TOKEN_MINUS; 
+                    lex->at++;
+                }
+                else
+                {
+                    lex->at++;
+                    uint32_t num_decimals = 0;
+                    while (
+                        lex->at[0] &&
+                        (gs_char_is_numeric(lex->at[0]) || 
+                        (lex->at[0] == '.' && num_decimals == 0) || 
+                        lex->at[0] == 'f')
+                    )
+                    {
+                        // Grab decimal
+                        num_decimals = lex->at[0] == '.' ? num_decimals++ : num_decimals;
+                        gs_println("%c", *lex->at);
+
+                        //Increment
+                        lex->at++;
+                    }
+
+                    t.len = lex->at - t.text;
+                    t.type = GS_TOKEN_NUMBER;
+                }
+
+            } break;
 			
 			case '/':
 			{
@@ -7855,7 +7989,7 @@ GS_API_DECL gs_token_t gs_lexer_c_next_token(gs_lexer_t* lex)
 					t.len = lex->at - t.text;
 					t.type = GS_TOKEN_IDENTIFIER;
 				}
-				else if (gs_char_is_numeric(c) || c == '-')
+				else if (gs_char_is_numeric(c) && c != '-')
 				{
 					uint32_t num_decimals = 0;
 					while (
@@ -7969,7 +8103,7 @@ GS_API_DECL bool gs_lexer_require_token_type(gs_lexer_t* lex, gs_token_type type
 	}
 
 	// Error
-	gs_println("error::gs_lexer_require_token_type::%s, expected: %s", gs_token_type_to_str(next_t.type), gs_token_type_to_str(type));
+	// gs_println("error::gs_lexer_require_token_type::%s, expected: %s", gs_token_type_to_str(next_t.type), gs_token_type_to_str(type));
 
 	// Reset
 	lex->at = at;
@@ -8119,9 +8253,9 @@ GS_API_DECL void gs_frame()
     gs_platform_t* platform = gs_subsystem(platform);
 
     // Cache times at start of frame
-    platform->time.current  = gs_platform_elapsed_time();
-    platform->time.update   = platform->time.current - platform->time.previous;
-    platform->time.previous = platform->time.current;
+    platform->time.elapsed  = (float)gs_platform_elapsed_time();
+    platform->time.update   = platform->time.elapsed - platform->time.previous;
+    platform->time.previous = platform->time.elapsed;
 
     // Update platform and process input
     gs_platform_update(platform);
@@ -8153,9 +8287,9 @@ GS_API_DECL void gs_frame()
     }
 
     // Frame locking (not sure if this should be done here, but it is what it is)
-    platform->time.current  = gs_platform_elapsed_time();
-    platform->time.render   = platform->time.current - platform->time.previous;
-    platform->time.previous = platform->time.current;
+    platform->time.elapsed  = (float)gs_platform_elapsed_time();
+    platform->time.render   = platform->time.elapsed - platform->time.previous;
+    platform->time.previous = platform->time.elapsed;
     platform->time.frame    = platform->time.update + platform->time.render;            // Total frame time
     platform->time.delta    = platform->time.frame / 1000.f;
 
@@ -8165,9 +8299,9 @@ GS_API_DECL void gs_frame()
     {
         gs_platform_sleep((float)(target - platform->time.frame));
         
-        platform->time.current = gs_platform_elapsed_time();
-        double wait_time = platform->time.current - platform->time.previous;
-        platform->time.previous = platform->time.current;
+        platform->time.elapsed = (float)gs_platform_elapsed_time();
+        double wait_time = platform->time.elapsed - platform->time.previous;
+        platform->time.previous = platform->time.elapsed;
         platform->time.frame += wait_time;
         platform->time.delta = platform->time.frame / 1000.f;
     }
