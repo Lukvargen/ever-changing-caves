@@ -11,3 +11,8 @@ controls: WASD move | shoot with left mouse button
 
 https://user-images.githubusercontent.com/26551674/127752394-cb84f316-0e4c-439c-8117-b21765dfc946.mp4
 
+
+https://user-images.githubusercontent.com/26551674/133034900-f828f699-e924-441a-a455-85c38b5a9835.mp4
+
+
+
