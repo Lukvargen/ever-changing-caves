@@ -146,7 +146,7 @@ char* get_upgrade_string(game_data_t* gd, upgrade_t* upgrade, char* text, int TE
             break;
         default:
             gs_snprintf(text, TEXT_SIZE, "ERROR");
-            gs_println("NO UPGRADE TYPE");
+            //gs_println("NO UPGRADE TYPE");
             break;
     }
 }

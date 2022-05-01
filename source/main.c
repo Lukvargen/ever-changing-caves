@@ -23,6 +23,7 @@ void update_player(game_data_t* gd, float delta);
 void spawn_projectile(game_data_t* gd, projectile_t* projectile);
 void update_projectiles(game_data_t* gd, float delta);
 void update_tiles(game_data_t* gd, float delta);
+void spread_lava(game_data_t* gd, int x, int y, float delta);
 void update_powerups(game_data_t* gd, float delta);
 void update_worms(game_data_t* gd, float delta);
 void update_particle_emitters(game_data_t* gd, float delta);
@@ -53,6 +54,7 @@ void spawn_powerup(game_data_t* gd, powerup type, gs_vec2 pos);
 particle_emitter_t* spawn_particle_emitter(game_data_t* gd, particle_emitter_desc_t* desc);
 void delete_particle_emitter(particle_emitter_t* p);
 
+bool is_tile_inbounds(int tile_x, int tile_y);
 bool is_tile_solid(game_data_t* gd, int tile_x, int tile_y);
 void explode_tiles(game_data_t* gd, int tile_x, int tile_y, int radius);
 gs_vec2 gs_vec2_truncate(gs_vec2 v, float max_length);
@@ -75,12 +77,45 @@ void init()
 	gd->rand = gs_rand_seed(1); // != 0
 
 
+
 	gd->hit_sound_hndl = gs_audio_load_from_file("./assets/Hit_Hurt2.wav");
 	gd->crystal_pickup_sound_hndl = gs_audio_load_from_file("./assets/pickup.wav");
 	gd->hit_wall_sound_hndl = gs_audio_load_from_file("./assets/HitWall.wav");
 	gd->buy_positive_sound_hndl = gs_audio_load_from_file("./assets/BuyComplete.wav");
 	gd->buy_negative_sound_hndl = gs_audio_load_from_file("./assets/BuyNegative.wav");
 
+	//gd->lava_sound_hndl = gs_audio_load_from_file("./assets/lava.ogg");
+
+	gd->lava_sound_hndl = gs_audio_load_from_file("./assets/lavasound.ogg");
+	gd->lava_sound_instance_hndl = gs_audio_instance_create(
+        &(gs_audio_instance_decl_t){
+            .src = gd->lava_sound_hndl,
+            .persistent = true,
+            .volume = 0.5f,
+            .loop = true
+        }
+    );
+    gs_audio_play(gd->lava_sound_instance_hndl);
+	
+	
+	gd->music_sound_hndl = gs_audio_load_from_file("./assets/caves.ogg");
+	gd->music_sound_instance_hndl = gs_audio_instance_create(
+        &(gs_audio_instance_decl_t){
+            .src = gd->music_sound_hndl,
+            .persistent = true,
+            .volume = 0.5f,
+            .loop = true
+        }
+    );
+    gs_audio_play(gd->music_sound_instance_hndl);
+
+	gd->footstep_sound_hndl[0] = gs_audio_load_from_file("./assets/leftfootstep.wav");
+	gd->footstep_sound_hndl[1] = gs_audio_load_from_file("./assets/rightfootstep.wav");
+
+	gd->fireshot_sound_hndl = gs_audio_load_from_file("./assets/fireshot.wav");
+	gd->enemy_boss_hurt_sound_hndl = gs_audio_load_from_file("./assets/enemybosshurt.wav");
+	gd->enemy_hurt_sound_hndl = gs_audio_load_from_file("./assets/enemyhurt.wav");
+	gd->player_hurt_sound_hndl = gs_audio_load_from_file("./assets/playerhit.wav");
 	// Initialize Game Data
 	gd->volume = 0.5;
 
@@ -104,9 +139,8 @@ void init()
 	}
 
 	
-	gd->wave = 0;
+	
 	gd->enemies_to_spawn = NULL;
-
 	gd->shop.all_upgrades = NULL;
 
 	
@@ -116,7 +150,7 @@ void init()
 	restart_game(gd);
 	//gd->player.player_spawn_missile_chance = 1;
 	//gd->crystals_currency = 1000;
-	shop_init_all_upgrades(gd);
+	//shop_init_all_upgrades(gd);
 	//shop_show(gd);
 
 	
@@ -151,6 +185,9 @@ void update()
 			gd->volume = 0.f;
 		else
 			gd->volume = 0.5f;
+	}
+	if (gs_platform_key_pressed(GS_KEYCODE_F1)) {
+		gd->debug = !gd->debug;
 	}
 
 	gd->shake_time -= delta;
@@ -197,6 +234,7 @@ void restart_game(game_data_t* gd)
 	gs_dyn_array_clear(gd->projecitles);
 	gs_dyn_array_clear(gd->crystals);
 
+
 	for (int enemy_list_i = 0; enemy_list_i < gs_dyn_array_size(gd->enemies); enemy_list_i++) {
 		entity_t** enemy_list = *gd->enemies[enemy_list_i];
 		int list_size = gs_dyn_array_size(enemy_list);
@@ -218,7 +256,9 @@ void restart_game(game_data_t* gd)
 	gd->paused = false;
 	gd->shop.visible = false;
 	gd->spawn_timer = 0.f;
-	
+	gd->lava_spread_amount = 0.2;
+	gd->winscreen_visible = false;
+
 	for (int x = 0; x < TILES_SIZE_X; x++) {
 		for (int y = 0; y < TILES_SIZE_Y; y++) {
 			gd->tiles[x][y].destruction_value = 0;
@@ -232,17 +272,22 @@ void restart_game(game_data_t* gd)
 	spawn_player(gd);
 	gd->crystals_currency = 0;
 	gd->wave = 0;
+	for (int i = 0; i < 0; i++) {
+		gd->wave+= 1;
+		unlock_upgrades(gd);
+	}
+	//shop_show(gd);
+	next_wave(gd);
 	//gd->player.player_laser_lvl = 2;
 	//gd->player.dmg = 3;
 
 	//gd->crystals_currency = 10000;
 
 
-	next_wave(gd);
 	//spawn_worm(gd, WORM_TYPE_BOSS, 15, gs_v2(RESOLUTION_X/2 + 128, RESOLUTION_Y/2), 16);
 	//spawn_turret(gd, gs_v2(RESOLUTION_X/2, RESOLUTION_Y/2), TURRET_TYPE_BOSS);
 
-	spawn_final_boss(gd, gs_v2(WORLD_SIZE_X/2, WORLD_SIZE_Y/2));
+	//spawn_final_boss(gd, gs_v2(WORLD_SIZE_X/2, WORLD_SIZE_Y/2));
 }
 
 void update_tiles(game_data_t* gd, float delta)
@@ -257,6 +302,17 @@ void update_tiles(game_data_t* gd, float delta)
 			
 			if (tile->value < 0) tile->value = 0;
 			else if (tile->value > 1) tile->value = 1;
+
+			tile->lava_value -= 0.2 * delta;
+			if (tile->lava_value < 0) tile->lava_value = 0;
+
+			if (tile->value < TILE_AIR_THRESHOLD) {
+				tile->lava_value = 0;
+			}
+
+			if (tile->lava_value > 0 && gd->lava_spread) {
+				spread_lava(gd, x, y, delta);
+			}
 		}
 	}
 }
@@ -377,8 +433,38 @@ void update_player(game_data_t* gd, float delta)
 		}
 	}
 
-	p->player_particle_emitter->position = p->position;
+	// footsteps
+	p->player_steps += gs_vec2_len(p->velocity) * delta;
+	if (p->player_steps > PLAYER_FOOTSTEP_LENGTH) {
+		p->player_steps = 0;
+		
+		gs_audio_play_source(gd->footstep_sound_hndl[p->player_current_step], 0.5);
+
+		p->player_current_step++;
+		p->player_current_step = p->player_current_step % 2;
+	}
+
+	if (gd->tiles[tile_x][tile_y].lava_value > 0) {
+		entity_take_dmg(gd, p, 1, p->position, gs_v2(0,0));
+	} 
+	// play lava sound if near lava
+	int lava_audio_radius = 14;
+	float min_distance = 1.0;
+	for (int xx = -lava_audio_radius; xx < lava_audio_radius; xx++) {
+		for (int yy = -lava_audio_radius; yy < lava_audio_radius; yy++) {
+			float distance = sqrt(xx*xx+ yy*yy) / (float)(lava_audio_radius);
+			if (distance > 1.0)
+				continue;
+			if (is_tile_inbounds(tile_x+xx, tile_y+yy) && gd->tiles[tile_x+xx][tile_y+yy].lava_value > 0) {
+				if (distance < min_distance)
+					min_distance = distance;
+			}
+		}
+	}
+	gs_audio_set_volume(gd->lava_sound_instance_hndl, (1.0-min_distance) * 0.5);
 	
+
+	p->player_particle_emitter->position = p->position;
 
 	p->player_shoot_time += delta;
 	if (gs_platform_mouse_down(GS_MOUSE_LBUTTON) && p->player_shoot_time >= p->player_shoot_delay) {
@@ -400,7 +486,6 @@ void update_player(game_data_t* gd, float delta)
 			.particle_shink_out = true,
 			.particle_size = gs_v2(8, 8),
 			.position = *pos
-			
 		};
 
 		projectile_t projectile = {
@@ -561,6 +646,14 @@ void update_projectiles(game_data_t* gd, float delta)
 					play_sfx(gd, gd->hit_wall_sound_hndl, gd->volume * 0.6);
 				}
 			}
+		}
+		
+		// TODO delte me
+		if (p->lava_generation > 0 && !is_tile_solid(gd, tile_x, tile_y)) {
+			gd->lava_spread = true;
+			
+			gd->tiles[tile_x][tile_y].lava_value += p->lava_generation * delta;
+
 		}
 
 		p->life_time += delta;
@@ -1540,16 +1633,49 @@ void update_orbs(game_data_t* gd, float delta)
 }
 
 
+void spread_lava(game_data_t* gd, int x, int y, float delta)
+{
+	tile_t* tile = &gd->tiles[x][y];
+	if (tile->lava_value < 0.05) {
+		return;
+	}
+
+	if (tile->lava_value > 2) tile->lava_value = 2;
+
+	gs_vec2 spread_tiles[4] = { {x+1,y}, {x-1,y}, {x,y+1}, {x,y-1} };
+	for (int i = 0; i < 4; i++) {
+		int xx = spread_tiles[i].x;
+		int yy = spread_tiles[i].y;
+		if (xx < 0 || xx >= TILES_SIZE_X || yy < 0 || yy >= TILES_SIZE_Y)
+			return;
+		if (!is_tile_solid(gd, xx, yy)) {
+
+			if (gd->tiles[x][y].lava_value > gd->tiles[xx][yy].lava_value) {
+				gd->tiles[xx][yy].lava_value += gd->lava_spread_amount*gd->tiles[x][y].lava_value * delta;
+			}
+		} else {
+			// obsidan walls?
+			// would end up with hollow walls -> noise -> ugly
+		}
+
+	}
+
+}
+
 void spawn_final_boss(game_data_t* gd, gs_vec2 pos)
 {
 	entity_t* boss = malloc(sizeof(entity_t));
+
+	int hp = 40 * pow(1.2, gd->wave);
+	float dmg = 2 * pow(1.10, gd->wave);
 	*boss = (entity_t) {
 		.color = gs_v4(1.f,1.f,1.f,1.f),
 		.dmg = 1,
 		.position = pos,
 		.radius = 32,
-		.max_hp = 100,
-		.hp = 100
+		.max_hp = hp,
+		.hp = hp,
+		.type = ENTITY_TYPE_FINAL_BOSS
 		
 	};
 	gs_dyn_array_push(gd->final_bosses, boss); 
@@ -1560,6 +1686,8 @@ void update_final_boss(game_data_t* gd, float delta)
 	int size = gs_dyn_array_size(gd->final_bosses);
 	for (int i = 0; i < size; i++) {
 		entity_t* boss = gd->final_bosses[i];
+		
+		boss->boss_time_since_spawn += delta;
 
 		if (boss->dead) {
 			spawn_crystals(gd, boss->position, 5);
@@ -1577,13 +1705,201 @@ void update_final_boss(game_data_t* gd, float delta)
 				.rand_velocity_range = 0.5
 			});
 			
+			gd->lava_spread = false;
 			free(boss);
 			remove_entity(gd->final_bosses, &size, &i);
 			continue;
 		}
 
+		gs_vec2 player_pos = gd->player.position;
+		gs_vec2 target_dir;
+
+		if (boss->boss_time_since_spawn < FINAL_BOSS_ANIMATION_SPAWN_TIME)
+			continue;
+
+		float hp_percent = boss->hp / boss->max_hp;
+		int stage = 0;
+		if (hp_percent > 0.8) {
+			stage = 0;
+			target_dir = gs_vec2_sub(player_pos, boss->position);
+			target_dir = gs_vec2_norm(target_dir);
+			boss->boss_shoot_timer -= delta;
+			if (boss->boss_shoot_timer <= 0) {
+				boss->boss_shoot_timer = 0.1;
+				
+				//gs_audio_play_source(gd->fireshot_sound_hndl, 0.4f);
+
+				gs_vec2 projectile_spawn_pos = gs_vec2_add(
+						boss->position,
+						gs_v2(gs_rand_gen(&gd->rand) * 64 - 32, gs_rand_gen(&gd->rand) * 64 - 32)
+				);
+
+				particle_emitter_desc_t particle_desc = {
+					.particle_amount = 8,
+					.particle_color = gs_v4(0.8, 0.6, 0.2 ,1.0),
+					.particle_lifetime = 0.4,
+					.particle_shink_out = true,
+					.particle_size = gs_v2(16, 16),
+					.particle_velocity = gs_v2(50, 0),
+					.rand_rotation_range = 2 * 3.14,
+					.rand_velocity_range = 1,
+					.position = projectile_spawn_pos
+				};
+
+				projectile_t projectile = {
+					.position = projectile_spawn_pos,
+					.velocity = gs_vec2_scale(target_dir, 100),
+					.color = gs_v4(0.9, 0.8, 0.2 ,1.0),
+					.enemy_created = true,
+					.radius = 10,
+					.accell = 75,
+					.max_life_time = 3,
+					.dmg = 1,
+					.explode_radius = 2,
+					.particle_emitter = spawn_particle_emitter(gd, &particle_desc),
+					.lava_generation = 3,
+					
+				};
+
+
+				spawn_projectile(gd, &projectile);
+			}
+		} else if (hp_percent > 0.5) {
+			stage = 1;
+
+			boss->boss_shoot_timer -= delta;
+			if (boss->boss_shoot_timer <= 0) {
+				boss->boss_shoot_timer = 0.5;
+
+				int p_amount = 10;
+				for (int i = 0; i < p_amount; i++) {
+					gs_vec2 p_vel;
+					float speed = 150;
+					float rot = 2 * 3.14 / p_amount;
+					//float rot_offset = sin(gd->time*0.5) * 3.14;
+					//gs_println("rot offset %f", rot_offset);
+					p_vel.x = cos(rot/2.0 + rot*i + sin(gd->time*0.3) * 3.14*2) * speed;
+					p_vel.y = sin(rot/2.0 + rot*i + sin(gd->time*0.3) * 3.14*2) * speed;
+					spawn_projectile(gd, &(projectile_t){
+						.position = boss->position,
+						.velocity = p_vel,
+						.radius = 8,
+						.accell = 50,
+						.max_life_time = 3.f,
+						.dmg = boss->dmg,
+						.enemy_created = true,
+						.go_through_walls = true,
+						.color = gs_v4(0.5, 0.8, 0.2 ,1.0),
+						
+						.particle_emitter = spawn_particle_emitter(gd, &(particle_emitter_desc_t){
+							.particle_amount = 10,
+							.particle_color = gs_v4(0.7, 0.8, 0.4 ,1.0),
+							.particle_lifetime = 0.2,
+							.particle_shink_out = true,
+							.particle_size = gs_v2(12, 12),
+							.particle_velocity = gs_v2(50, 0),
+							.rand_rotation_range = 2 * 3.14,
+							.rand_velocity_range = 1,
+							.position = boss->position
+							
+						})
+					});
+				}
+
+			}
+			
+
+		} else if (hp_percent > 0.25) {
+			stage = 2;
+			target_dir = gs_vec2_sub(gs_v2(player_pos.x + gd->player.velocity.x*0.3, player_pos.y + gd->player.velocity.y*0.3), boss->position);
+			target_dir = gs_vec2_norm(target_dir);
+			
+			boss->boss_shoot_circle = true;
+
+		} else {
+			int tile_x = boss->position.x / TILE_SIZE;
+			int tile_y = boss->position.y / TILE_SIZE;
+			explode_tiles(gd, tile_x, tile_y, 6);
+			//spread_lava(gd, tile_x, tile_y, 5.0, delta);
+			boss->boss_spawn_lava_time += delta;
+			if (boss->boss_spawn_lava_time < 25) {
+				gd->tiles[tile_x][tile_y].lava_value = 10.0;
+				gd->lava_spread_amount = 0.75; //- (boss->boss_spawn_lava_time/25.0);
+				gd->lava_spread = true;
+				boss->hp = 0.25 * boss->max_hp;
+				
+
+				
+				
+				if (boss->boss_spawn_lava_time > 8 && !boss->summoned_worm_boss) {
+					spawn_worm(gd, WORM_TYPE_BOSS, 12, boss->position, 24);
+					boss->summoned_worm_boss = true;
+				}
+				if (boss->boss_spawn_lava_time > 4) {
+					boss->boss_shoot_circle = false;
+				} else {
+					boss->boss_shoot_circle = true;
+				}
+			}
+			else {
+				gd->lava_spread = false;
+
+			}
+			
+			
+		}
+
+		boss->boss_angle = atan2f(player_pos.y - boss->position.y, player_pos.x - boss->position.x);//gs_vec2_angle(target_dir, gs_v2(1,0));
+
+		if (boss->boss_shoot_circle) 
+		{
+
+			boss->boss_shoot_timer -= delta;
+			if (boss->boss_shoot_timer <= 0) {
+				boss->boss_shoot_timer = 0.2;
+
+				int p_amount = 6;
+				for (int i = 0; i < p_amount; i++) {
+					gs_vec2 p_vel;
+					float speed = 150;
+					float rot = 2 * 3.14 / p_amount;
+					float rot_offset = gd->time*0.2 * 3.14;
+					//gs_println("rot offset %f", rot_offset);
+					p_vel.x = cos(rot/2.0 + rot*i + rot_offset) * speed;
+					p_vel.y = sin(rot/2.0 + rot*i + rot_offset) * speed;
+					spawn_projectile(gd, &(projectile_t){
+						.position = boss->position,
+						.velocity = p_vel,
+						.radius = 8,
+						.accell = -50,
+						.max_life_time = 5.f,
+						.dmg = boss->dmg,
+						.enemy_created = true,
+						.go_through_walls = true,
+						.color = gs_v4(0.5, 0.8, 0.2 ,1.0),
+						
+						.particle_emitter = spawn_particle_emitter(gd, &(particle_emitter_desc_t){
+							.particle_amount = 10,
+							.particle_color = gs_v4(0.7, 0.8, 0.4 ,1.0),
+							.particle_lifetime = 0.2,
+							.particle_shink_out = true,
+							.particle_size = gs_v2(12, 12),
+							.particle_velocity = gs_v2(50, 0),
+							.rand_rotation_range = 2 * 3.14,
+							.rand_velocity_range = 1,
+							.position = boss->position
+							
+						})
+					});
+				}
+			}
+
+		}
+
 	}
 }
+
+
 
 void spawn_powerup(game_data_t* gd, powerup type, gs_vec2 pos)
 {
@@ -1651,7 +1967,25 @@ void entity_take_dmg(game_data_t* gd, entity_t* entity, float dmg, gs_vec2 hit_p
 	
 
 	if (knock_dir.x != 0 && knock_dir.y != 0) {
-		play_sfx(gd, gd->hit_sound_hndl, gd->volume);
+			
+		if (entity->type == ENTITY_TYPE_FINAL_BOSS){
+			play_sfx(gd, gd->fireshot_sound_hndl, gd->volume);
+		} else if (entity->type == ENTITY_TYPE_WORM && entity->worm_type == WORM_TYPE_BOSS) {
+			play_sfx(gd, gd->enemy_boss_hurt_sound_hndl, gd->volume);
+		} else if (entity->type == ENTITY_TYPE_TURRET && entity->turret_type == TURRET_TYPE_BOSS) {
+			play_sfx(gd, gd->enemy_boss_hurt_sound_hndl, gd->volume);
+		} else if (entity->type != ENTITY_TYPE_PLAYER) {
+			play_sfx(gd, gd->enemy_hurt_sound_hndl, gd->volume);
+		} else if (entity->type == ENTITY_TYPE_PLAYER) {
+			play_sfx(gd, gd->player_hurt_sound_hndl, gd->volume);
+		}
+		else {
+			play_sfx(gd, gd->hit_sound_hndl, gd->volume);
+		}
+		
+		
+
+
 
 		if (entity->type != ENTITY_TYPE_TURRET)
 			entity->velocity = gs_vec2_add(entity->velocity, gs_vec2_scale(knock_dir, 200));
@@ -1812,8 +2146,10 @@ void update_wave_system(game_data_t* gd, float delta)
 						break;
 					case (ENTITY_TYPE_BOSS):
 					{
-						spawned_boss = true;
-						if (gs_rand_gen(&gd->rand) > 0.5) {
+						if (gd->wave == 15) {
+							spawn_final_boss(gd, gs_v2(WORLD_SIZE_X/2, WORLD_SIZE_Y/2));
+						}
+						else if (gs_rand_gen(&gd->rand) > 0.5) {
 							spawn_pos = get_edge_spawnpoint(gd, 0);
 							spawn_worm(gd, WORM_TYPE_BOSS, 15, spawn_pos, 16);
 						} else {
@@ -1821,6 +2157,7 @@ void update_wave_system(game_data_t* gd, float delta)
 							spawn_pos.y = 50 + (WORLD_SIZE_Y-100) * gs_rand_gen(&gd->rand);
 							spawn_turret(gd, spawn_pos, TURRET_TYPE_BOSS);
 						}
+						spawned_boss = true;
 						break;
 					}
 				}
@@ -1838,6 +2175,10 @@ void update_wave_system(game_data_t* gd, float delta)
 			if (enemies_alive == 0) {
 				gd->open_shop_timer += delta;
 				if (gd->open_shop_timer > 3.f) {
+					if (gd->wave == 15) {
+						gd->winscreen_visible = true;
+						gd->paused = true;
+					}
 					shop_show(gd);
 				} 
 			} else {
@@ -1864,7 +2205,10 @@ void next_wave(game_data_t* gd)
 	int orb_amount = 1 * pow(1.1, gd->wave);
 
 	if (gd->wave % 5 == 0) {
-		append_enemies_to_spawn(gd, ENTITY_TYPE_BOSS, gd->wave/5);
+		int boss_amount = gd->wave/5;
+		if (gd->wave == 15)
+			boss_amount = 1;
+		append_enemies_to_spawn(gd, ENTITY_TYPE_BOSS, boss_amount);
 		worm_amount /= 3;
 		turret_amount /= 3;
 		orb_amount /= 3;
@@ -1888,6 +2232,10 @@ void remove_entity(entity_t* arr[], int* arr_length, int* i)
 	gs_dyn_array_pop(arr);
 	*arr_length--;
 	*i--;
+}
+
+bool is_tile_inbounds(int tile_x, int tile_y) {
+	return !(tile_x < 0 || tile_y < 0 || tile_x >= TILES_SIZE_X || tile_y >= TILES_SIZE_Y);
 }
 
 bool is_tile_solid(game_data_t* gd, int tile_x, int tile_y)
@@ -1941,7 +2289,7 @@ gs_vec2 steer(gs_vec2 from_pos, gs_vec2 target_pos, gs_vec2 velocity, float max_
 
 void play_sfx(game_data_t* gd, gs_handle(gs_audio_source_t) audio, float volume)
 {
-	if (gd->sfx_played_count < 3) {
+	if (gd->sfx_played_count < 1) {
 		gd->sfx_played_count++;
 		gs_audio_play_source(audio, volume);
 	}

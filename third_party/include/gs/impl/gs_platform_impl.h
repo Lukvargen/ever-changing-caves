@@ -23,11 +23,12 @@
 
 #ifdef GS_PLATFORM_IMPL_DEFAULT
 
-#if !( defined GS_PLATFORM_WIN )
+#if !(defined GS_PLATFORM_WIN)
     #include <sys/stat.h>
     #include <dirent.h>
 #else
 	#include "../external/dirent/dirent.h"
+    #include <direct.h>
 #endif
 
 /*== Platform Window ==*/
@@ -682,8 +683,10 @@ GS_API_DECL int32_t gs_platform_mkdir_default_impl(const char* dir_path, int32_t
 { 
     #ifdef __MINGW32__
         return mkdir(dir_path);
-    #else
+    #elif defined __linux__
         return mkdir(dir_path, opt);
+    #else
+        return _mkdir(dir_path);
     #endif
 }
 
@@ -770,6 +773,7 @@ void gs_platform_file_extension_default_impl(char* buffer, size_t buffer_sz, con
 
 #elif (defined GS_PLATFORM_WINDOWS)
 
+    #define WIN32_LEAN_AND_MEAN
     #include <windows.h>
 
 #endif
@@ -1748,6 +1752,27 @@ uint32_t gs_platform_framebuffer_height(uint32_t handle)
     uint32_t w = 0, h = 0;
     gs_platform_framebuffer_size(handle, &w, &h);
     return h;
+}
+
+GS_API_DECL gs_vec2 gs_platform_monitor_sizev(uint32_t id)
+{
+    gs_vec2 ms = gs_v2s(0.f);
+    int32_t width, height, xpos, ypos;
+    int32_t count;
+    GLFWmonitor* monitor = NULL;
+    gs_platform_t* platform = gs_subsystem(platform);
+
+    GLFWmonitor** monitors = glfwGetMonitors(&count);
+    if (count && id < count) { 
+        monitor = monitors[id];
+    } 
+    else {
+        monitor = glfwGetPrimaryMonitor();
+    } 
+    glfwGetMonitorWorkarea(monitor, &xpos, &ypos, &width, &height);
+    ms.x = (float)width;
+    ms.y = (float)height;
+    return ms;
 }
 
 void gs_platform_set_cursor(uint32_t handle, gs_platform_cursor cursor)

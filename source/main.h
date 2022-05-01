@@ -20,6 +20,7 @@
 #define PLAYER_SHOOT_DELAY_UPGRADE_EFFECT 0.8f
 #define PLAYER_BASE_DMG 1
 #define PLAYER_DUAL_SHOT_SHOOT_DELAY_EFFECT 0.33f
+#define PLAYER_FOOTSTEP_LENGTH 50.f
 
 #define WORM_MAX_VELOCITY	200.f
 #define WORM_MAX_FORCE		6.f
@@ -29,6 +30,7 @@
 #define TURRET_BURST_COUNT	3
 #define TURRET_BURST_SHOT_DELAY	0.2f
 #define TURRET_ANIMATION_SPAWN_TIME 1.f
+#define FINAL_BOSS_ANIMATION_SPAWN_TIME 1.f
 
 #define PROJECITLE_MAX_LIFE_TIME 3.f
 #define EXPLODE_DMG 5.f
@@ -63,6 +65,7 @@ typedef struct tile_t
 	float value;
 	float noise_value;
 	float destruction_value;
+	float lava_value;
 } tile_t;
 
 
@@ -222,6 +225,9 @@ typedef struct entity_t
 			bool player_dual_shot;
 			
 			particle_emitter_t* player_particle_emitter;
+
+			float player_steps;
+			int player_current_step;
 			
 		};
 		struct // worm
@@ -261,7 +267,13 @@ typedef struct entity_t
 		struct // final_boss
 		{
 			float final_boss_shoot_time;
-			
+			int final_boss_stage;
+			float boss_time_since_spawn;
+			float boss_angle;
+			float boss_shoot_timer;
+			float boss_spawn_lava_time;
+			bool summoned_worm_boss;
+			bool boss_shoot_circle;
 		};
 		
 	};
@@ -293,6 +305,8 @@ typedef struct projectile_t
 	float seek_max_force;
 	float seek_max_speed;
 
+	float lava_generation;
+
 	entity_t* entity_ignore;
 	particle_emitter_t* particle_emitter;
 	bool enemy_created;
@@ -303,12 +317,19 @@ typedef struct game_data_t
 {
 	gs_command_buffer_t gcb;
 	gs_immediate_draw_t gsi;
+
 	gs_gui_context_t gs_gui;
-	gs_gui_style_sheet_t stylesheet;
+	gs_gui_style_sheet_t style_sheet;
+	
+	gs_asset_font_t font_large;
+	gs_asset_font_t font_medium;
+	gs_asset_font_t font_small;
 
 	gs_vec2 camera_pos;
 	
 	gs_mt_rand_t rand;
+
+	bool debug;
 
 	// audio
 	gs_handle(gs_audio_source_t) hit_sound_hndl;
@@ -317,9 +338,25 @@ typedef struct game_data_t
 	gs_handle(gs_audio_source_t) buy_positive_sound_hndl;
 	gs_handle(gs_audio_source_t) buy_negative_sound_hndl;
 
+	gs_handle(gs_audio_source_t) lava_sound_hndl;
+	gs_handle(gs_audio_instance_t) lava_sound_instance_hndl;
+
+	gs_handle(gs_audio_source_t) music_sound_hndl;
+	gs_handle(gs_audio_instance_t) music_sound_instance_hndl;
+
+	gs_handle(gs_audio_source_t) footstep_sound_hndl[2];
+
+	gs_handle(gs_audio_source_t) fireshot_sound_hndl;
+	gs_handle(gs_audio_source_t) enemy_boss_hurt_sound_hndl;
+	gs_handle(gs_audio_source_t) enemy_hurt_sound_hndl;
+	gs_handle(gs_audio_source_t) player_hurt_sound_hndl;
+
 	entity_t player;
 	gs_dyn_array(projectile_t) projecitles;
 	gs_dyn_array(laser_t) lasers;
+
+	bool lava_spread;
+	float lava_spread_amount;
 	// tile
 	tile_t tiles[TILES_SIZE_X][TILES_SIZE_Y];
 	gs_handle(gs_graphics_vertex_buffer_t) tile_vbo;
@@ -382,6 +419,7 @@ typedef struct game_data_t
 
 	gs_dyn_array(entity_t**) enemies; // collection of all enemy arrays
 
+
 	struct shop_t shop;
 	// wave stuff
 	int wave;
@@ -390,6 +428,7 @@ typedef struct game_data_t
 	float open_shop_timer;
 
 	float time;
+	bool winscreen_visible;
 	bool paused;
 	bool game_over;
 	bool restart;

@@ -1964,6 +1964,7 @@ uint32_t gs_hash_table_get_key_index_func(void** data, void* key, size_t key_len
         (gs_hash_table_get_key_index_func((void**)&(__HT->data), (void*)&(__HT->tmp_key), sizeof(__HT->tmp_key),\
             sizeof(__HT->tmp_val), __HT->stride, __HT->klpvl) != GS_HASH_TABLE_INVALID_INDEX))
 
+// uint32_t gs_hash_table_get_key_index_func(void** data, void* key, size_t key_len, size_t val_len, size_t stride, size_t klpvl)
 
 #define gs_hash_table_exists(__HT, __HTK)\
 		(__HT && gs_hash_table_key_exists((__HT), (__HTK)))
@@ -2703,6 +2704,12 @@ gs_inline gs_vec2
 gs_vec2_div(gs_vec2 v0, gs_vec2 v1) 
 {
     return gs_vec2_ctor(v0.x / v1.x, v0.y / v1.y);
+}
+
+gs_inline bool
+gs_vec2_equals(gs_vec2 v0, gs_vec2 v1)
+{
+    return (v0.x == v1.x && v0.y == v1.y);
 }
 
 gs_inline gs_vec2 
@@ -4608,7 +4615,7 @@ typedef enum gs_platform_keycode
 #define GS_KEYCODE_LSHIFT   GS_KEYCODE_LEFT_SHIFT
 #define GS_KEYCODE_RSHIFT   GS_KEYCODE_RIGHT_SHIFT
 #define GS_KEYCODE_LALT     GS_KEYCODE_LEFT_ALT
-#define GS_KEYCCODE_RALT    GS_KEYCODE_RIGHT_ALT
+#define GS_KEYCODE_RALT     GS_KEYCODE_RIGHT_ALT
 
 typedef enum gs_platform_mouse_button_code
 {
@@ -5063,6 +5070,7 @@ GS_API_DECL gs_vec2  gs_platform_framebuffer_sizev(uint32_t handle);
 GS_API_DECL void     gs_platform_framebuffer_size(uint32_t handle, uint32_t* w, uint32_t* h);
 GS_API_DECL uint32_t gs_platform_framebuffer_width(uint32_t handle);
 GS_API_DECL uint32_t gs_platform_framebuffer_height(uint32_t handle);
+GS_API_DECL gs_vec2  gs_platform_monitor_sizev(uint32_t id);
 
 // Platform callbacks
 GS_API_DECL void     gs_platform_set_framebuffer_resize_callback(uint32_t handle, gs_framebuffer_resize_callback_t cb);
@@ -5810,7 +5818,7 @@ __gs_renderpass_default_impl()
 }
 
 // Convenience define for default render pass to back buffer
-#define GS_GRAPHICS_RENDER_PASS_DEFAULT (__gs_renderpass_default_impl())
+#define GS_GRAPHICS_RENDER_PASS_DEFAULT __gs_renderpass_default_impl()
 
 typedef struct gs_graphics_info_t
 {

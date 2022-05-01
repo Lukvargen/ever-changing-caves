@@ -13,7 +13,9 @@
 #include <gs/util/gs_gui.h>
 
 
-#include "style_data.h"
+//#include "style_data.h"
+
+#include "gui.h"
 
 gs_asset_texture_t circle_16px;
 gs_asset_texture_t player_body_png;
@@ -54,7 +56,7 @@ void graphics_init(game_data_t* gd)
 	
 
     gd->gcb = gs_command_buffer_new();
-	gd->gsi = gs_immediate_draw_new(gs_platform_main_window());
+	gd->gsi = gs_immediate_draw_new();
 	
 
 	
@@ -97,12 +99,12 @@ void graphics_init(game_data_t* gd)
 	init_particles(gd);
 	init_entities(gd);
 	
-	gs_gui_init(&gd->gs_gui, gs_platform_main_window());
-	g_app.fonts[GUI_FONT_LABEL] = font_medium;
-	g_app.fonts[GUI_FONT_BUTTON] = font_medium;
-	g_app.fonts[GUI_FONT_BUTTONFOCUS] = font_medium;
-	gd->stylesheet = gs_gui_style_sheet_create(&gd->gs_gui, &menu_style_sheet_desc);
+	//g_app.fonts[GUI_FONT_LABEL] = font_medium;
+	//g_app.fonts[GUI_FONT_BUTTON] = font_medium;
+	//g_app.fonts[GUI_FONT_BUTTONFOCUS] = font_medium;
+	//gd->stylesheet = gs_gui_style_sheet_create(&gd->gs_gui, &menu_style_sheet_desc);
 
+	gui_init(gd);
 
 	//gs_vec2 fbs = gs_platform_framebuffer_sizev(gd->fbo.id);
 	//gs_println("gs_platform_framebuffer_sizev %f %f", fbs.x, fbs.y);
@@ -143,7 +145,8 @@ void draw_game(game_data_t* gd)
 	gd->projection = gs_mat4_ortho(gd->camera_pos.x, RESOLUTION_X + gd->camera_pos.x, RESOLUTION_Y + gd->camera_pos.y, gd->camera_pos.y, -100, 100);
 	gsi_ortho(gsi, 0, RESOLUTION_X, RESOLUTION_Y, 0, 0, 100);
 
-	gs_gui_begin(&gd->gs_gui, gs_v2(RESOLUTION_X, RESOLUTION_Y));
+	gui_update(gd);
+	/*gs_gui_begin(&gd->gs_gui, gs_v2(RESOLUTION_X, RESOLUTION_Y));
 	{
 		gs_gui_set_style_sheet(&gd->gs_gui, &gd->stylesheet);
 
@@ -166,10 +169,11 @@ void draw_game(game_data_t* gd)
 
 		//gs_gui_end_panel(&gd->gs_gui);
 	}
-	gs_gui_end(&gd->gs_gui);
+	gs_gui_end(&gd->gs_gui);*/
 
 
 	// Hpbar
+	/*
 	int hp_bar_end = TILE_SIZE* 20;
 	int hp_bar_size = TILE_SIZE * 4;
 	{
@@ -194,22 +198,22 @@ void draw_game(game_data_t* gd)
 		71, 160, 37, 255, GS_GRAPHICS_PRIMITIVE_TRIANGLES); //green
 		gsi_rect(gsi, l, b, r, t,
 		150, 200, 150, 255, GS_GRAPHICS_PRIMITIVE_LINES);
-	}
+	}*/
 	char str1[100] = "CRYSTALS: ";
 	int length = snprintf(NULL, 0, "%d", gd->crystals_currency);
 	char* crystals_str = malloc(length+1);
 	snprintf(crystals_str, length+1, "%d", gd->crystals_currency);
 	strcat(str1, crystals_str);
-	gsi_text(gsi, 16, hp_bar_size + 12, str1, &font_medium, false, 255,255,255,255);
+	//gsi_text(gsi, 16, hp_bar_size + 12, str1, &font_medium, false, 255,255,255,255);
 	free(crystals_str);
 
 	char wave_str[100] = "\n";
 	snprintf(wave_str, 100, "WAVE:%i", gd->wave);
-	gsi_text(gsi, RESOLUTION_X-80, 20, wave_str, &font_medium, false, 255, 255, 255, 255);
+	//gsi_text(gsi, RESOLUTION_X-80, 20, wave_str, &font_medium, false, 255, 255, 255, 255);
 	
 	gsi_defaults(gsi);
 	gs_vec2 m_pos = get_local_mouse_pos();
-
+	/* use gs_ui now
 	if (gd->shop.visible) {
 		int center_x = RESOLUTION_X / 2;
 		int upgrade_panel_size_x = RESOLUTION_X/4;
@@ -350,10 +354,10 @@ void draw_game(game_data_t* gd)
 			gs_audio_play_source(gd->buy_positive_sound_hndl, gd->volume);
 			shop_hide(gd);
 		}
-	}
+	}*/
 
 
-	
+	/*
 	if (gd->game_over) {
 		char* game_over = "GAME OVER";
 		gs_vec2 dims = gs_asset_font_text_dimensions(&font_large, game_over, strlen(game_over));
@@ -375,6 +379,7 @@ void draw_game(game_data_t* gd)
 			gd->restart = true;
 		}
 	}
+	*/
 
 	// lasers
 	gsi_blend_enabled(gsi, true);
@@ -400,11 +405,7 @@ void draw_game(game_data_t* gd)
 		gsi_draw(gsi, gcb);
 
 		
-		//gs_vec2 fbs2 = gs_platform_framebuffer_sizev(gd->fbo.id);
-		//gs_graphics_set_viewport(gcb,0,0,(int)fbs2.x,(int)fbs2.y);
-
-		//gs_graphics_set_viewport(gcb, 0, 0, RESOLUTION_X, RESOLUTION_Y);
-		gs_gui_render(&gd->gs_gui, gcb, gs_v2(RESOLUTION_X, RESOLUTION_Y));
+		gs_gui_render(&gd->gs_gui, gcb);
 
 	gs_graphics_renderpass_end(gcb);
 	
@@ -416,11 +417,6 @@ void draw_game(game_data_t* gd)
 		// draws quad with frame buffer image
 		draw_screen(gd, gcb);
 
-		//gs_gui_render(&gd->gs_gui, gcb);
-		//gs_graphics_set_viewport(gcb,0,0,RESOLUTION_X,RESOLUTION_Y);
-		//gs_gui_render(&gd->gs_gui, gcb);
-
-		//gs_gui_render(&gd->gs_gui, gcb, gs_v2(RESOLUTION_X, RESOLUTION_Y));
 
 	gs_graphics_renderpass_end(gcb);
 
@@ -564,6 +560,10 @@ void draw_tiles(game_data_t* gd, gs_command_buffer_t* gcb)
 				if (tile_value > 1) tile_value = 1;
 				col = wall_color;
 			} else col = floor_color;
+
+			if (gd->tiles[x][y].lava_value > 0) {
+				col = gs_vec3_scale((gs_vec3){0.8, 0.3, 0.2}, gd->tiles[x][y].lava_value);
+			}
 			
 			gs_vec3 t_color = gs_vec3_scale(col, tile_value);
 
@@ -903,7 +903,7 @@ void draw_entities(game_data_t* gd, gs_command_buffer_t* gcb)
 {
 
 	/*
-		Should probably have done some sprite component thing | Only woth to change if I decide to add more entities
+		Should probably have done some sprite component thing | Only worth to change if I decide to add more entities
 		sprite_t {
 			texture
 			pos
@@ -979,7 +979,7 @@ void draw_entities(game_data_t* gd, gs_command_buffer_t* gcb)
 		);
 		gs_graphics_apply_bindings(gcb, &binds);
 		gs_graphics_draw(gcb, &(gs_graphics_draw_desc_t){.start = 0, .count = 6});
-		size = 14;
+		size = 14 + 4 * sin( 3.14 * (gd->player.player_steps / PLAYER_FOOTSTEP_LENGTH));
 		tex = player_body_png;
 		angle = atan2f(m_pos.y - gd->player.position.y, m_pos.x - gd->player.position.x);
 		rotation = gs_mat4_rotatev(angle, gs_v3(0,0,1));
@@ -1098,7 +1098,7 @@ void draw_entities(game_data_t* gd, gs_command_buffer_t* gcb)
 		color =  t->color;
 		flash = t->flash;
 		tex = turret_png;
-		//if (t->turret_type)
+		
 		int turret_size = turret_png.desc.width;
 		if (t->turret_type == TURRET_TYPE_BOSS) turret_size = turret_boss_base_png.desc.width;
 		float size = turret_size * gs_min(1.0, t->turret_time_since_spawn / TURRET_ANIMATION_SPAWN_TIME);
@@ -1206,9 +1206,19 @@ void draw_entities(game_data_t* gd, gs_command_buffer_t* gcb)
 		gs_mat4 translation = gs_mat4_translate(b->position.x, b->position.y, 0.0f);
 
 		float size = final_boss_png.desc.width;
-		gs_mat4 model = gs_mat4_mul_list(2, translation, gs_mat4_scale(final_boss_png.desc.width, final_boss_png.desc.height, 0));
+		size = size * gs_min(1.0, b->boss_time_since_spawn / FINAL_BOSS_ANIMATION_SPAWN_TIME);
+		
 
-		mvp = gs_mat4_mul(gd->projection, model);
+		gs_mat4 rot = gs_mat4_rotate(b->boss_angle, 0, 0, 1);
+
+		mvp = gs_mat4_mul_list(4,
+			gd->projection,
+			translation,
+			rot,
+			gs_mat4_scale(size, size, 0)
+		);
+
+
 
 		gs_graphics_apply_bindings(gcb, &binds);
 		gs_graphics_draw(gcb, &(gs_graphics_draw_desc_t){.start = 0, .count = 6});
