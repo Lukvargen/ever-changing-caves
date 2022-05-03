@@ -84,14 +84,13 @@ void init()
 	gd->buy_positive_sound_hndl = gs_audio_load_from_file("./assets/BuyComplete.wav");
 	gd->buy_negative_sound_hndl = gs_audio_load_from_file("./assets/BuyNegative.wav");
 
-	//gd->lava_sound_hndl = gs_audio_load_from_file("./assets/lava.ogg");
 
 	gd->lava_sound_hndl = gs_audio_load_from_file("./assets/lavasound.ogg");
 	gd->lava_sound_instance_hndl = gs_audio_instance_create(
         &(gs_audio_instance_decl_t){
             .src = gd->lava_sound_hndl,
             .persistent = true,
-            .volume = 0.5f,
+            .volume = 0.0f,
             .loop = true
         }
     );
@@ -116,7 +115,7 @@ void init()
 	gd->enemy_boss_hurt_sound_hndl = gs_audio_load_from_file("./assets/enemybosshurt.wav");
 	gd->enemy_hurt_sound_hndl = gs_audio_load_from_file("./assets/enemyhurt.wav");
 	gd->player_hurt_sound_hndl = gs_audio_load_from_file("./assets/playerhit.wav");
-	// Initialize Game Data
+	
 	gd->volume = 0.5;
 
 	gd->projecitles = NULL;
@@ -144,15 +143,9 @@ void init()
 	gd->shop.all_upgrades = NULL;
 
 	
-	//next_wave(gd);
 	graphics_init(gd);
 	spawn_player(gd);
 	restart_game(gd);
-	//gd->player.player_spawn_missile_chance = 1;
-	//gd->crystals_currency = 1000;
-	//shop_init_all_upgrades(gd);
-	//shop_show(gd);
-
 	
 }
 
@@ -276,18 +269,8 @@ void restart_game(game_data_t* gd)
 		gd->wave+= 1;
 		unlock_upgrades(gd);
 	}
-	//shop_show(gd);
+	
 	next_wave(gd);
-	//gd->player.player_laser_lvl = 2;
-	//gd->player.dmg = 3;
-
-	//gd->crystals_currency = 10000;
-
-
-	//spawn_worm(gd, WORM_TYPE_BOSS, 15, gs_v2(RESOLUTION_X/2 + 128, RESOLUTION_Y/2), 16);
-	//spawn_turret(gd, gs_v2(RESOLUTION_X/2, RESOLUTION_Y/2), TURRET_TYPE_BOSS);
-
-	//spawn_final_boss(gd, gs_v2(WORLD_SIZE_X/2, WORLD_SIZE_Y/2));
 }
 
 void update_tiles(game_data_t* gd, float delta)
@@ -341,11 +324,6 @@ void spawn_player(game_data_t* gd)
 	p->player_projectile_reflect_chance = 0.f;
 	p->player_projectile_reflect_amount = 1;
 	p->player_laser_lvl = 0;
-
-	//p->player_dual_shot = true;
-	
-
-
 
 	p->player_particle_emitter = spawn_particle_emitter(gd, &(particle_emitter_desc_t){
 		.particle_amount = 4,
@@ -648,7 +626,7 @@ void update_projectiles(game_data_t* gd, float delta)
 			}
 		}
 		
-		// TODO delte me
+		
 		if (p->lava_generation > 0 && !is_tile_solid(gd, tile_x, tile_y)) {
 			gd->lava_spread = true;
 			
@@ -916,11 +894,6 @@ void update_worms(game_data_t* gd, float delta)
 
 		head->time_alive += delta;
 
-		//head->flash -= 5*delta;
-		//if (head->flash < 0)
-		//	head->flash = 0.f;
-
-
 		// add repell to other worms
 		for (int j = 0; j < worms_size; j++) {
 			entity_t* other_worm = gd->worms[j];
@@ -1062,7 +1035,7 @@ void update_worms(game_data_t* gd, float delta)
 	}
 	
 }
-
+// not in use :)
 void update_powerups(game_data_t* gd, float delta) 
 {
 	int p_size = gs_dyn_array_size(gd->powerups);
@@ -1259,9 +1232,6 @@ void update_turrets(game_data_t* gd, float delta)
 	int turrets_size = gs_dyn_array_size(gd->turrets);
 	for (int i = 0; i < turrets_size; i++) {
 		entity_t* t = gd->turrets[i];
-		//t->flash -= 5*delta;
-		//if (t->flash < 0)
-		//	t->flash = 0.f;
 		t->turret_time_since_spawn += delta;
 		
 		if (t->dead) {
@@ -1528,9 +1498,6 @@ void update_orbs(game_data_t* gd, float delta)
 	int orbs_size = gs_dyn_array_size(gd->orbs);
 	for (int i = 0; i < orbs_size; i++) {
 		entity_t* o = gd->orbs[i];
-		//o->flash -= 5*delta;
-		//if (o->flash < 0)
-		//	o->flash = 0.f;
 		
 		if (o->dead) {
 			spawn_crystals(gd, o->position, 5);
@@ -1776,8 +1743,6 @@ void update_final_boss(game_data_t* gd, float delta)
 					gs_vec2 p_vel;
 					float speed = 150;
 					float rot = 2 * 3.14 / p_amount;
-					//float rot_offset = sin(gd->time*0.5) * 3.14;
-					//gs_println("rot offset %f", rot_offset);
 					p_vel.x = cos(rot/2.0 + rot*i + sin(gd->time*0.3) * 3.14*2) * speed;
 					p_vel.y = sin(rot/2.0 + rot*i + sin(gd->time*0.3) * 3.14*2) * speed;
 					spawn_projectile(gd, &(projectile_t){
@@ -1820,11 +1785,10 @@ void update_final_boss(game_data_t* gd, float delta)
 			int tile_x = boss->position.x / TILE_SIZE;
 			int tile_y = boss->position.y / TILE_SIZE;
 			explode_tiles(gd, tile_x, tile_y, 6);
-			//spread_lava(gd, tile_x, tile_y, 5.0, delta);
 			boss->boss_spawn_lava_time += delta;
 			if (boss->boss_spawn_lava_time < 25) {
 				gd->tiles[tile_x][tile_y].lava_value = 10.0;
-				gd->lava_spread_amount = 0.75; //- (boss->boss_spawn_lava_time/25.0);
+				gd->lava_spread_amount = 0.75;
 				gd->lava_spread = true;
 				boss->hp = 0.25 * boss->max_hp;
 				
@@ -1849,7 +1813,7 @@ void update_final_boss(game_data_t* gd, float delta)
 			
 		}
 
-		boss->boss_angle = atan2f(player_pos.y - boss->position.y, player_pos.x - boss->position.x);//gs_vec2_angle(target_dir, gs_v2(1,0));
+		boss->boss_angle = atan2f(player_pos.y - boss->position.y, player_pos.x - boss->position.x);
 
 		if (boss->boss_shoot_circle) 
 		{
@@ -1864,7 +1828,6 @@ void update_final_boss(game_data_t* gd, float delta)
 					float speed = 150;
 					float rot = 2 * 3.14 / p_amount;
 					float rot_offset = gd->time*0.2 * 3.14;
-					//gs_println("rot offset %f", rot_offset);
 					p_vel.x = cos(rot/2.0 + rot*i + rot_offset) * speed;
 					p_vel.y = sin(rot/2.0 + rot*i + rot_offset) * speed;
 					spawn_projectile(gd, &(projectile_t){
