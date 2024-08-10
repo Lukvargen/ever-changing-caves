@@ -8,9 +8,8 @@ proj_name=App
 proj_root_dir=$(pwd)/../
 
 flags=(
-	-std=gnu99 -w -ldl -lGL -lX11 -pthread -lXi
+	-std=gnu99 -W -ldl -lGL -lX11 -pthread -lXi
 )
-
 # Include directories
 inc=(
 	-I ../third_party/include/
@@ -22,6 +21,6 @@ src=(
 )
 
 # Build
-gcc -O3 ${inc[*]} ${src[*]} ${flags[*]} -lm -o ${proj_name}
+gcc -O0 ${inc[*]} ${src[*]} ${flags[*]} -lm -o ${proj_name}
 
 cd ..

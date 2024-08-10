@@ -417,7 +417,7 @@ typedef struct game_data_t
 
 	gs_dyn_array(particle_emitter_t*) particle_emitters;
 
-	gs_dyn_array(entity_t**) enemies; // collection of all enemy arrays
+	gs_dyn_array(entity_t***) enemies; // collection of all enemy arrays
 
 
 	struct shop_t shop;
@@ -445,4 +445,4 @@ void next_wave(game_data_t* gd);
 void restart_game(game_data_t* gd);
 
 
-#endif o
+#endif
