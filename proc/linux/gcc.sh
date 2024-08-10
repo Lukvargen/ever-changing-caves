@@ -18,7 +18,7 @@ inc=(
 
 # Source files
 src=(
-	../source/main.c
+	../source/*.c
 )
 
 # Build
